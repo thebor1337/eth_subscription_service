@@ -11,7 +11,10 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 // TODO подарочные подписки (через нфт)
 // ! TODO кастомные ошибки
 // TODO сравнить правда ли работает страта со storage поинтерами по сокращению газа или лишняя залупа (и насколько отличается разворчивание контракта при новом подходе)
-// ! TODO севрис подписок (вместо одного контракта, через какой-то прокси который содержит в себе общий баланс, занесенный на сервер)
+// ! TODO севрис подписок (вместо одного контракта, через какой-то прокси который содержит в себе общий баланс, занесенный на сервер) + возможность интеграции с существующими проектами
+// TODO модификаторы поставить где надо
+// TODO restore?
+// TODO нфт как подписка, в ней указывается оператор (контракт, обрабатывающий подписку) и может использолваться где угодно + коллбеки (посмотреть как устроены нфт на hyphen, где на ней были указаны динамические проценты)
 
 
 contract SubscriptionContract is Ownable {
@@ -46,12 +49,14 @@ contract SubscriptionContract is Ownable {
         uint startedAt;
         uint chargedAt;
         uint chargedPeriods;
+        uint cancelledAt;
     }
 
-    address _recipient;
-    Plan[] _plans;
-    mapping(address => Subscription) _subscriptions;
-    mapping(address => uint) _balances;
+    // TODO мб сделать паблик переменные?
+    address private _recipient;
+    Plan[] private _plans;
+    mapping(address => Subscription) private _subscriptions;
+    mapping(address => uint) private _balances;
 
     constructor(address recipient_) {
         _recipient = recipient_;
@@ -110,12 +115,19 @@ contract SubscriptionContract is Ownable {
         }
 
         Plan storage plan = _plans[subscription.planIdx];
-        uint countablePeriods = _periodsPassed(
-            subscription.startedAt, 
-            plan.disabledAt == 0 ? block.timestamp : plan.disabledAt,
-            plan.period, 
-            false
-        );
+
+        uint planDisabledAt = plan.disabledAt;
+        uint cancelledAt = subscription.cancelledAt;
+
+        uint countablePeriods = _periodsPassed({
+            start: subscription.startedAt, 
+            end: Math.min(
+                planDisabledAt == 0 ? block.timestamp : planDisabledAt,
+                cancelledAt == 0 ? block.timestamp : cancelledAt
+            ),
+            period: plan.period,
+            roundUp: false
+        });
 
         return _calcDebt(
             countablePeriods, 
@@ -167,30 +179,33 @@ contract SubscriptionContract is Ownable {
         return _subscriptions[account];
     }
 
-    function getSubscribedPlanIdx(address account) public view returns(uint) {
-        require(hasSubscription(account), "no subscription");
-        return _subscriptions[account].planIdx;
-    }
-
     function getPlan(uint planIdx) external view returns(Plan memory) {
         return _plans[planIdx];
     }
 
     function isSubscriptionActive(address account) external view returns(bool) {
+        return block.timestamp >= expiresAt(account);
+    }
+
+    function expiresAt(address account) public view returns(uint) {
         require(hasSubscription(account), "no subscription");
 
         Subscription storage subscription = _subscriptions[account];
         Plan storage plan = _plans[_subscriptions[account].planIdx];
 
-        uint countablePeriods = _periodsPassed(subscription.startedAt, block.timestamp, plan.period, false);
+        uint startedAt = subscription.startedAt;
+        uint period = plan.period;
+        uint planDisabledAt = plan.disabledAt;
+        uint cancelledAt = subscription.cancelledAt;
 
         // если план отключен, то подписка не действительна, если начался следующий период после момента отключения
-        if (plan.disabledAt != 0 && countablePeriods * plan.period >= plan.disabledAt) {
-            return false;
+        if (planDisabledAt != 0 || cancelledAt != 0) {
+            uint maxPeriods = _countablePeriods(startedAt, planDisabledAt, cancelledAt, period, true);
+            return startedAt + maxPeriods * period;
         }
 
         uint balanceInPeriods = balanceOf(account) / plan.rate;
-        return countablePeriods <= subscription.chargedPeriods + balanceInPeriods;
+        return startedAt + (subscription.chargedPeriods + balanceInPeriods) * period;
     }
 
     function nextChargeAt(address account) external view returns(uint) {
@@ -200,74 +215,56 @@ contract SubscriptionContract is Ownable {
         Plan storage plan = _plans[subscription.planIdx];
 
         uint startedAt = subscription.startedAt;
-        uint chargedPeriods = subscription.chargedPeriods;
-        uint planDisabledAt = plan.disabledAt;
         uint period = plan.period;
 
-        uint countablePeriods = _periodsPassed(
-            startedAt, 
-            (planDisabledAt == 0) ? block.timestamp : planDisabledAt, 
-            period, 
-            false
-        );
+        uint countablePeriods = _countablePeriods({
+            startedAt: startedAt,
+            planDisabledAt: plan.disabledAt,
+            cancelledAt: subscription.cancelledAt,
+            period: period,
+            roundUp: false
+        });
 
-        if (countablePeriods > chargedPeriods) {
-            return 0;
-        }
-        if (countablePeriods == chargedPeriods) {
-            return startedAt + countablePeriods * period;
-        }
+        uint chargedPeriods = subscription.chargedPeriods;
+
+        if (countablePeriods > chargedPeriods) return 0;
+        if (countablePeriods == chargedPeriods) return startedAt + countablePeriods * period;
         return startedAt + (chargedPeriods + 1) * period;
     }
 
-    function expiresAt(address account) external view returns(uint) {
-        require(hasSubscription(account), "no subscription");
+    function restore() external {
+        require(hasSubscription(msg.sender), "no subscription");
+        require(_subscriptions[msg.sender].cancelledAt != 0, "subscription hasn't been cancelled");
 
-
+        // TODO
     }
 
-    // function expiresAt(address account) external view returns(uint) {
-    //     // TODO должно выдавать, когда подписка заканчивается на основе текущего баланса или неактивности плана
-    //     // TODO если уже истекла - выдавать ошибку
-    //     require(hasSubscription(account), "no subscription");
-
-    //     Subscription storage subscription = _subscriptions[account];
-    //     uint startedAt = subscription.startedAt;
-    //     uint period = _plans[subscription.planIdx].period;
-
-    //     if (block.timestamp < startedAt) {
-    //         return startedAt;
-    //     }
-
-    //     uint advancedCountablePeriods = _periodsPassed(startedAt, block.timestamp, period, true);
-    //     return startedAt + advancedCountablePeriods * period;
-    // }
-
-    function subscribe(uint planIdx) external virtual {
+    function subscribe(uint planIdx) external {
         // TODO что по поводу реентранси?
-
-        require(!hasSubscription(msg.sender), "already subscribed");
         require(isPlanActive(planIdx), "plan is unavailable");
 
-        Plan storage plan = _plans[planIdx];
+        Subscription storage subscription = _subscriptions[msg.sender];
+        require(subscription.startedAt == 0 || subscription.cancelledAt != 0, "current subscription is still active");
 
-        uint trial = plan.trial;
-        uint rate = plan.rate;
+        Plan storage plan = _plans[planIdx];
+        uint trial =  _plans[planIdx].trial;
 
         if (trial == 0) {
-            _charge(msg.sender, msg.sender, planIdx, 1, rate, true);
+            _charge(msg.sender, msg.sender, planIdx, 1, plan.rate, true);
         } else {
-            require(balanceOf(msg.sender) >= rate, "not enough balance");
+            require(balanceOf(msg.sender) >= plan.rate, "not enough balance");
+            if (subscription.startedAt != 0) {
+                subscription.chargedAt = 0;
+                subscription.chargedPeriods = 0;
+            }
         }
 
-        Subscription storage subscription = _subscriptions[msg.sender];
         subscription.planIdx = planIdx;
         subscription.startedAt = block.timestamp + trial;
+        subscription.cancelledAt = 0;
     }
 
     function charge(bool extra) external {
-        // TODO что если он будет по кд вызывать extra? сделать ограничение, что продлить через extra можно только на 1 период вперед
-        // TODO не давать продлевать в будущее более чем за N секунд до истечения подписки
         (uint amountToCharge, uint periodsToCharge) = _calcCharge(msg.sender, msg.sender, extra);
         _charge(
             msg.sender, 
@@ -313,14 +310,12 @@ contract SubscriptionContract is Ownable {
 
     function cancel() external {
         // TODO списывать сразу весь долг как самочардж
-        // TODO отмена это когда ты отменяешь следующее списание, а не удаляешь подписку
         require(hasSubscription(msg.sender), "no subscription");
         require(lockedOf(msg.sender) == 0, "locked balance is not zero");
 
-        uint planIdx = _subscriptions[msg.sender].planIdx;
-        delete _subscriptions[msg.sender];
-
-        emit Cancelled(msg.sender, planIdx);
+        Subscription storage subscription = _subscriptions[msg.sender];
+        subscription.cancelledAt = block.timestamp;
+        emit Cancelled(msg.sender, subscription.planIdx);
     }
 
     function _calcCharge(
@@ -331,6 +326,7 @@ contract SubscriptionContract is Ownable {
         uint amountToCharge, 
         uint periodsToCharge
     ) {
+        // TODO не нравится мне тут все, разделить бы самочард и обычный чардж, иначе нахуй тут экстра если она только в одном случае юзается
         require(hasSubscription(account), "no subscription");
 
         Subscription storage subscription = _subscriptions[account];
@@ -338,16 +334,20 @@ contract SubscriptionContract is Ownable {
         uint planIdx = subscription.planIdx;
         Plan storage plan = _plans[planIdx];
 
-        uint period = plan.period;
-        uint planDisabledAt = plan.disabledAt;
+        uint startedAt = subscription.startedAt;
+        uint cancelledAt = subscription.cancelledAt;
         uint chargedPeriods = subscription.chargedPeriods;
 
-        uint countablePeriods = _periodsPassed(
-            subscription.startedAt, 
-            (planDisabledAt == 0) ? block.timestamp : planDisabledAt, 
-            period, 
-            false
-        );
+        uint period = plan.period;
+        uint planDisabledAt = plan.disabledAt;
+
+        uint countablePeriods = _countablePeriods({
+            startedAt: startedAt,
+            planDisabledAt: planDisabledAt,
+            cancelledAt: cancelledAt,
+            period: period,
+            roundUp: false
+        });
 
         uint rate;
         if (operator == account) {
@@ -361,7 +361,8 @@ contract SubscriptionContract is Ownable {
 
             if (extra) {
                 require(planDisabledAt == 0, "plan is disabled");
-                uint nextPeriodTimestamp = subscription.startedAt + (countablePeriods + 1) * period;
+                require(cancelledAt == 0, "subscription is cancelled");
+                uint nextPeriodTimestamp = startedAt + (countablePeriods + 1) * period;
                 // TODO задавать в контракте мин колво дней для продления
                 require(nextPeriodTimestamp - block.timestamp <= 3 days, "too early to charge in advance");
                 periodsToCharge++;
@@ -377,7 +378,8 @@ contract SubscriptionContract is Ownable {
             rate = plan.rate;
         }
 
-        amountToCharge = (periodsToCharge * rate).min(
+        amountToCharge = Math.min(
+            (periodsToCharge * rate),
             _calcDebt(countablePeriods, chargedPeriods, rate, period)
         );
 
@@ -431,6 +433,24 @@ contract SubscriptionContract is Ownable {
         return maxDebt.min((countablePeriods - chargedPeriods) * rate);
     }
 
+    function _countablePeriods(
+        uint startedAt,
+        uint planDisabledAt,
+        uint cancelledAt,
+        uint period,
+        bool roundUp
+    ) internal view returns(uint) {
+        return _periodsPassed({
+            start: startedAt, 
+            end: Math.min(
+                planDisabledAt == 0 ? block.timestamp : planDisabledAt,
+                cancelledAt == 0 ? block.timestamp : cancelledAt
+            ),
+            period: period,
+            roundUp: roundUp
+        });
+    }
+
     function _periodsPassed(uint start, uint end, uint period, bool roundUp) internal pure returns(uint) {
         if (end < start) return 0;
 
@@ -439,18 +459,7 @@ contract SubscriptionContract is Ownable {
             timePassed = end - start;
         }
 
-        if (roundUp) {
-            return timePassed.ceilDiv(period);
-        }
-
+        if (roundUp) return timePassed.ceilDiv(period);
         return timePassed / period;
-    }
-
-    function _timePassed(uint start, uint end) internal pure returns(uint) {
-        if (end < start) return 0;
-
-        unchecked {
-            return end - start;
-        }
     }
 }
