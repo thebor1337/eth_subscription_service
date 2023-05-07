@@ -26,6 +26,7 @@ contract SubscriptionContract is Ownable {
 
     event Subscribed(address indexed account, uint indexed planIdx);
     event Cancelled(address indexed account, uint indexed planIdx);
+    event Restored(address indexed account, uint indexed planIdx);
     event Charged(address indexed account, address indexed operator, uint indexed planIdx, uint amount);
 
     event PlanAdded(uint indexed planIdx);
@@ -47,7 +48,7 @@ contract SubscriptionContract is Ownable {
     struct Subscription {
         uint planIdx;
         uint startedAt;
-        uint chargedAt;
+        // TODO нужно?
         uint chargedPeriods;
         uint cancelledAt;
     }
@@ -118,23 +119,24 @@ contract SubscriptionContract is Ownable {
 
         uint planDisabledAt = plan.disabledAt;
         uint cancelledAt = subscription.cancelledAt;
+        uint rate = plan.rate;
 
-        uint countablePeriods = _periodsPassed({
-            start: subscription.startedAt, 
-            end: Math.min(
-                planDisabledAt == 0 ? block.timestamp : planDisabledAt,
-                cancelledAt == 0 ? block.timestamp : cancelledAt
-            ),
-            period: plan.period,
-            roundUp: false
-        });
+        uint countablePeriods = _countablePeriods(
+            subscription.startedAt, 
+            planDisabledAt, 
+            cancelledAt, 
+            plan.period, 
+            false
+        );
 
-        return _calcDebt(
+        uint debtPeriods = _calcDebtPeriods(
             countablePeriods, 
             subscription.chargedPeriods, 
-            plan.rate, 
+            rate, 
             balanceOf(account)
         );
+
+        return debtPeriods * rate;
     }
 
     function maxWithdrawAmount(address account) public view returns(uint) {
@@ -158,14 +160,11 @@ contract SubscriptionContract is Ownable {
     }
 
     function withdraw(uint amount) external {
-
         uint maxAmount = maxWithdrawAmount(msg.sender);
         require(amount <= maxAmount, "amount is greater than max withdraw amount");
 
         _decreaseBalance(msg.sender, amount);
-
-        (bool success, ) = msg.sender.call{value: amount}("");
-        require(success, "transfer failed");
+        _transfer(msg.sender, amount);
 
         emit Withdraw(msg.sender, amount);
     }
@@ -232,15 +231,7 @@ contract SubscriptionContract is Ownable {
         return startedAt + (chargedPeriods + 1) * period;
     }
 
-    function restore() external {
-        require(hasSubscription(msg.sender), "no subscription");
-        require(_subscriptions[msg.sender].cancelledAt != 0, "subscription hasn't been cancelled");
-
-        // TODO
-    }
-
     function subscribe(uint planIdx) external {
-        // TODO что по поводу реентранси?
         require(isPlanActive(planIdx), "plan is unavailable");
 
         Subscription storage subscription = _subscriptions[msg.sender];
@@ -249,51 +240,67 @@ contract SubscriptionContract is Ownable {
         Plan storage plan = _plans[planIdx];
         uint trial =  _plans[planIdx].trial;
 
+        subscription.planIdx = planIdx;
+        subscription.startedAt = block.timestamp + trial;
+        subscription.cancelledAt = 0;
+
         if (trial == 0) {
             _charge(msg.sender, msg.sender, planIdx, 1, plan.rate, true);
         } else {
             require(balanceOf(msg.sender) >= plan.rate, "not enough balance");
-            if (subscription.startedAt != 0) {
-                subscription.chargedAt = 0;
+            if (subscription.chargedPeriods != 0) {
                 subscription.chargedPeriods = 0;
             }
         }
 
-        subscription.planIdx = planIdx;
-        subscription.startedAt = block.timestamp + trial;
-        subscription.cancelledAt = 0;
+        emit Subscribed(msg.sender, planIdx);
     }
 
-    function charge(bool extra) external {
-        (uint amountToCharge, uint periodsToCharge) = _calcCharge(msg.sender, msg.sender, extra);
-        _charge(
-            msg.sender, 
-            msg.sender, 
-            _subscriptions[msg.sender].planIdx, 
-            amountToCharge, 
-            periodsToCharge,
-            true
-        );
+    function restore() external {
+        require(hasSubscription(msg.sender), "no subscription");
+        
+        Subscription storage subscription = _subscriptions[msg.sender];
+        require(subscription.cancelledAt != 0, "subscription hasn't been cancelled");
+
+        uint planIdx = subscription.planIdx;
+
+        Plan storage plan = _plans[subscription.planIdx];
+        require(plan.disabledAt == 0, "plan is disabled");
+
+        subscription.startedAt = block.timestamp;
+        subscription.cancelledAt = 0;
+        subscription.chargedPeriods = 0;
+
+        _charge(msg.sender, msg.sender, planIdx, 1, plan.rate, true);
+
+        emit Restored(msg.sender, planIdx);
     }
 
     function charge(address account) external {
-        (uint amountToCharge, uint periodsToCharge) = _calcCharge(msg.sender, account, false);
+        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, account);
+        require(periodsToCharge > 0, "nothing to charge");
         _charge(
             account, 
             msg.sender, 
             _subscriptions[account].planIdx, 
             amountToCharge, 
             periodsToCharge,
-            true
+            amountToCharge > 0
         );
     }
 
     function charge(address[] calldata accounts) external {
-        // TODO все таки подумать об ошибка = похуй, пропускаем просто
         uint amountToTransfer;
+        bool charged;
+
         for (uint i = 0; i < accounts.length; i++) {
             address account = accounts[i];
-            (uint amountToCharge, uint periodsToCharge) = _calcCharge(msg.sender, account, false);
+            
+            (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, account);
+            
+            if (periodsToCharge == 0) continue;
+            if (!charged) charged = true;
+
             _charge(
                 account, 
                 msg.sender, 
@@ -302,90 +309,86 @@ contract SubscriptionContract is Ownable {
                 periodsToCharge,
                 false
             );
+
             amountToTransfer += amountToCharge;
         }
 
-        _transfer(_recipient, amountToTransfer);
+        require(charged, "no accounts to charge");
+
+        if (amountToTransfer > 0) {
+            _transfer(_recipient, amountToTransfer);
+        }
     }
 
     function cancel() external {
         // TODO списывать сразу весь долг как самочардж
         require(hasSubscription(msg.sender), "no subscription");
-        require(lockedOf(msg.sender) == 0, "locked balance is not zero");
-
+        
         Subscription storage subscription = _subscriptions[msg.sender];
+        require(subscription.cancelledAt == 0, "subscription has been cancelled already");
+
+        uint planIdx = subscription.planIdx;
+
         subscription.cancelledAt = block.timestamp;
-        emit Cancelled(msg.sender, subscription.planIdx);
+
+        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, msg.sender);
+        if (periodsToCharge > 0) {
+            _charge(
+                msg.sender, 
+                msg.sender, 
+                planIdx, 
+                amountToCharge, 
+                periodsToCharge, 
+                amountToCharge > 0
+            );
+        }
+
+        // TODO проверить, что после чарджа lockedOf = 0
+
+        emit Cancelled(msg.sender, planIdx);
     }
 
-    function _calcCharge(
-        address operator, 
-        address account, 
-        bool extra
-    ) internal view returns(
+    function _calcCharge(address operator, address account) internal view returns(
         uint amountToCharge, 
-        uint periodsToCharge
+        uint periodsToCharge,
+        uint rate
     ) {
-        // TODO не нравится мне тут все, разделить бы самочард и обычный чардж, иначе нахуй тут экстра если она только в одном случае юзается
         require(hasSubscription(account), "no subscription");
 
         Subscription storage subscription = _subscriptions[account];
-        
-        uint planIdx = subscription.planIdx;
-        Plan storage plan = _plans[planIdx];
+        Plan storage plan = _plans[subscription.planIdx];
 
-        uint startedAt = subscription.startedAt;
-        uint cancelledAt = subscription.cancelledAt;
-        uint chargedPeriods = subscription.chargedPeriods;
-
-        uint period = plan.period;
-        uint planDisabledAt = plan.disabledAt;
+        rate = plan.rate;
 
         uint countablePeriods = _countablePeriods({
-            startedAt: startedAt,
-            planDisabledAt: planDisabledAt,
-            cancelledAt: cancelledAt,
-            period: period,
+            startedAt: subscription.startedAt,
+            planDisabledAt: plan.disabledAt,
+            cancelledAt: subscription.cancelledAt,
+            period: plan.period,
             roundUp: false
         });
 
-        uint rate;
-        if (operator == account) {
-            if (countablePeriods > chargedPeriods) {
-                unchecked {
-                    periodsToCharge = countablePeriods - chargedPeriods;
-                }
-            } else if (extra) {
-                require(chargedPeriods == countablePeriods, "cannot charge more than one extra period"); 
-            }
-
-            if (extra) {
-                require(planDisabledAt == 0, "plan is disabled");
-                require(cancelledAt == 0, "subscription is cancelled");
-                uint nextPeriodTimestamp = startedAt + (countablePeriods + 1) * period;
-                // TODO задавать в контракте мин колво дней для продления
-                require(nextPeriodTimestamp - block.timestamp <= 3 days, "too early to charge in advance");
-                periodsToCharge++;
-            }
-
-            require(periodsToCharge > 0, "all periods are charged");
-            rate = rate.mulDiv(100 - plan.chargeDiscount, 100);
-        } else {
-            require(countablePeriods > chargedPeriods, "all periods are charged");
-            unchecked {
-                periodsToCharge = countablePeriods - chargedPeriods;
-            }
-            rate = plan.rate;
-        }
-
-        amountToCharge = Math.min(
-            (periodsToCharge * rate),
-            _calcDebt(countablePeriods, chargedPeriods, rate, period)
+        periodsToCharge = _calcDebtPeriods(
+            countablePeriods, 
+            subscription.chargedPeriods, 
+            rate, 
+            balanceOf(account)
         );
 
-        require(amountToCharge > 0, "nothing to charge");
+        if (periodsToCharge > 0) {
+            if (operator == account) {
+                uint ratio;
+                unchecked {
+                    // will never overflow, plan.chargeDiscount is restricted to 0-100
+                    ratio = 100 - plan.chargeDiscount;
+                }
+                rate = rate.mulDiv(ratio, 100);
+            }
+            amountToCharge = periodsToCharge * rate;
+        }
     }
 
+    // TODO делать скидку за самочардж или нет определять отдельным аргументом, ибо скидка будет шо при кенселе, шо при сабскрайбе
     function _charge(
         address account, 
         address operator, 
@@ -396,7 +399,6 @@ contract SubscriptionContract is Ownable {
     ) internal {
         _decreaseBalance(account, amountToCharge);
 
-        _subscriptions[account].chargedAt = block.timestamp;
         _subscriptions[account].chargedPeriods += periodsToCharge;
 
         if (makeTransfer) {
@@ -424,15 +426,25 @@ contract SubscriptionContract is Ownable {
         require(success, "transfer failed");
     }
 
-    function _calcDebt(
-        uint countablePeriods, 
-        uint chargedPeriods, 
-        uint rate, 
-        uint maxDebt
+    function _calcDebtPeriods(
+        uint countablePeriods,
+        uint chargedPeriods,
+        uint balance,
+        uint rate
     ) internal pure returns(uint) {
-        return maxDebt.min((countablePeriods - chargedPeriods) * rate);
+        if (countablePeriods <= chargedPeriods) {
+            return 0;
+        }
+
+        uint unchargedPeriods;
+        unchecked {
+            unchargedPeriods = countablePeriods - chargedPeriods;
+        }
+
+        return unchargedPeriods.min(balance / rate);
     }
 
+    // TODO переименовать, ибо это не засчитанные периоды, это кол-во всех в теории возможных периодов, типа totalPeriods
     function _countablePeriods(
         uint startedAt,
         uint planDisabledAt,
@@ -440,7 +452,7 @@ contract SubscriptionContract is Ownable {
         uint period,
         bool roundUp
     ) internal view returns(uint) {
-        return _periodsPassed({
+        return _calcPeriods({
             start: startedAt, 
             end: Math.min(
                 planDisabledAt == 0 ? block.timestamp : planDisabledAt,
@@ -451,7 +463,7 @@ contract SubscriptionContract is Ownable {
         });
     }
 
-    function _periodsPassed(uint start, uint end, uint period, bool roundUp) internal pure returns(uint) {
+    function _calcPeriods(uint start, uint end, uint period, bool roundUp) internal pure returns(uint) {
         if (end < start) return 0;
 
         uint timePassed;
