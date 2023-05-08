@@ -13,34 +13,19 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 // ? севрис подписок (вместо одного контракта, через какой-то прокси который содержит в себе общий баланс, занесенный на сервер) + возможность интеграции с существующими проектами
 // ? нфт как подписка, в ней указывается оператор (контракт, обрабатывающий подписку) и может использолваться где угодно + коллбеки (посмотреть как устроены нфт на hyphen, где на ней были указаны динамические проценты)
 // ? это нфт будет брать данные по истечению и тд с контракта-оператора
+// ? RentalNFT привязать к стандарту подписок
 
-
-// ! TODO написать комментарии
-// TODO переделать проверку существования подписки со startedAt на createdAt
-// TODO удаление подписки? (зачем)
+// ! TODO проверить невозможность ситуации, когда кол-во chargedPeriods больше, чем finitePeriods
 
 
 contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
-
     using Math for uint;
 
-    error InsufficientBalance(uint available, uint required);
-    error NotSubscribed();
-    error NotCancelled();
-    error AlreadyCancelled();
-    error PlanUnavailable();
-    error NothingToCharge();
-
-    address public recipient;
-    uint failedPaymentAmount;
+    uint public paidAmount;
     
     Plan[] private _plans;
     mapping(address => Subscription) private _subscriptions;
     mapping(address => uint) private _balances;
-
-    constructor(address recipient_) {
-        recipient = recipient_;
-    }
 
     modifier mustBeSubscribed(address account) {
         if (!_subscribed(account)) {
@@ -49,14 +34,17 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _;
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function subscriptionOf(address account) external view mustBeSubscribed(account) returns(Subscription memory) {
         return _subscriptions[account];
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function balanceOf(address account) public view returns(uint) {
         return _balances[account];
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function reservedOf(address account) public view returns(uint) {
         if (!_subscribed(account)) return 0;
 
@@ -78,7 +66,8 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return debtPeriods * rate;
     }
 
-    function maxWithdrawAmount(address account) public view returns(uint) {
+    /// @inheritdoc IStandaloneSubscriptionService
+    function availableBalance(address account) public view returns(uint) {
         uint balance = balanceOf(account);
         uint reserved = reservedOf(account);
         if (reserved >= balance) {
@@ -87,13 +76,17 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return balance - reserved;
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function isPlanActive(uint planIdx) public view returns(bool) {
         return _plans[planIdx].disabledAt != 0 || _plans[planIdx].closed;
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function validUntil(address account) public view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
         Plan storage plan = _plans[_subscriptions[account].planIdx];
+
+        // TODO тут точно надо использовать текущий баланс, а не доступный баланс?
 
         uint startedAt = subscription.startedAt;
         uint period = plan.period;
@@ -102,7 +95,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         // если план отключен, то подписка не действительна, если начался следующий период после момента отключения
         if (planDisabledAt != 0 || cancelledAt != 0) {
-            uint maxPeriods = _calcFinitePeriods(startedAt, planDisabledAt, cancelledAt, period, true);
+            uint maxPeriods = _calcCompletePeriods(startedAt, planDisabledAt, cancelledAt, period, true);
             return startedAt + maxPeriods * period;
         }
 
@@ -115,10 +108,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function isValid(address account) external view returns(bool) {
         return block.timestamp >= validUntil(account);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function nextAvailableChargeAt(address account) external view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
         Plan storage plan = _plans[subscription.planIdx];
@@ -126,20 +121,19 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         uint startedAt = subscription.startedAt;
         uint period = plan.period;
 
-        uint finitePeriods = _calcFinitePeriods(
+        uint completePeriods = _calcCompletePeriods(
             startedAt, 
             plan.disabledAt, 
             subscription.cancelledAt, 
             period, 
             false
         );
-        uint chargedPeriods = subscription.chargedPeriods;
 
-        if (finitePeriods > chargedPeriods) return 0;
-        if (finitePeriods == chargedPeriods) return startedAt + chargedPeriods * period;
-        return startedAt + (chargedPeriods + 1) * period;
+        if (completePeriods > subscription.chargedPeriods) return 0;
+        return startedAt + completePeriods * period;
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function subscribe(uint planIdx) external {
         if (!isPlanActive(planIdx)) revert PlanUnavailable();
 
@@ -154,7 +148,6 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
 
         Plan storage plan = _plans[planIdx];
-
         uint trial =  _plans[planIdx].trial;
 
         subscription.createdAt = block.timestamp;
@@ -176,6 +169,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Subscribed(msg.sender, planIdx);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function restore() external mustBeSubscribed(msg.sender) {
         if (!_cancelled(msg.sender)) revert NotCancelled();
 
@@ -194,6 +188,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Restored(msg.sender, planIdx);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function cancel() external mustBeSubscribed(msg.sender) {
         if (_cancelled(msg.sender)) revert AlreadyCancelled();
 
@@ -202,7 +197,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         subscription.cancelledAt = block.timestamp;
 
-        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, false);
+        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, true);
         if (periodsToCharge > 0) {
             _charge(
                 msg.sender, 
@@ -217,6 +212,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Cancelled(msg.sender, planIdx);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function charge(address account) external mustBeSubscribed(account) {
         (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(account, msg.sender == account);
         if (periodsToCharge == 0) revert NothingToCharge();
@@ -230,6 +226,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function charge(address[] calldata accounts) external {
         uint amountToTransfer;
         bool charged;
@@ -263,6 +260,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function deposit() external payable {
         _beforeDeposit(msg.sender, msg.value);
 
@@ -272,8 +270,9 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _afterDeposit(msg.sender, msg.value);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function withdraw(uint amount) external {
-        uint maxAmount = maxWithdrawAmount(msg.sender);
+        uint maxAmount = availableBalance(msg.sender);
         require(amount <= maxAmount, "amount is greater than max withdraw amount");
 
         _decreaseBalance(msg.sender, amount);
@@ -283,10 +282,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Withdraw(msg.sender, amount);
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function getPlan(uint planIdx) external view returns(Plan memory) {
         return _plans[planIdx];
     }
 
+    /// @inheritdoc IStandaloneSubscriptionService
     function addPlan(
         uint period,
         uint trial,
@@ -309,36 +310,71 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit PlanAdded(_plans.length - 1);
     }
 
+    /**
+     * @dev See {IStandaloneSubscriptionService-disablePlan}
+     */
     function disablePlan(uint planIdx) external onlyOwner {
+        require(_plans[planIdx].disabledAt == 0, "plan already disabled");
         _plans[planIdx].disabledAt = block.timestamp;
         emit PlanDisabled(planIdx);
     }
 
+    /**
+     * @dev See {IStandaloneSubscriptionService-closePlan}
+     */
     function closePlan(uint planIdx) external onlyOwner {
+        require(_plans[planIdx].disabledAt == 0, "plan disabled");
+        require(!_plans[planIdx].closed, "plan already closed");
         _plans[planIdx].closed = true;
         emit PlanClosed(planIdx);
     }
 
-    function changeRecipient(address newRecipient) external onlyOwner {
-        address oldRecipient = recipient;
-        recipient = newRecipient;
-        emit RecipientChanged(oldRecipient, newRecipient);
+    /**
+     * @dev See {IStandaloneSubscriptionService-openPlan}
+     */
+    function openPlan(uint planIdx) external onlyOwner {
+        require(_plans[planIdx].disabledAt == 0, "plan disabled");
+        require(_plans[planIdx].closed, "plan not closed");
+        _plans[planIdx].closed = false;
+        emit PlanOpened(planIdx);
     }
 
-    function withdrawPayments() external {
-        require(failedPaymentAmount > 0, "no failed payments to withdraw");
-        failedPaymentAmount = 0;
-        require(_transfer(recipient, failedPaymentAmount), "failed transfer");
+    // TODO нужно ли заносить в интерфейс эту функцию?
+    function withdrawPayments(address receiver) external onlyOwner {
+        require(paidAmount > 0, "nothing to withdraw");
+        require(receiver != address(0), "receiver is zero address");
+        paidAmount = 0;
+        require(_transfer(receiver, paidAmount), "failed transfer");
     }
 
+    /**
+     * @param account Account's address to check
+     * @return bool Is the account's subscribed
+     */
     function _subscribed(address account) internal view returns(bool) {
-        return _subscriptions[account].startedAt != 0;
+        return _subscriptions[account].createdAt != 0;
     }
 
+    /**
+     * @param account Account's address to check
+     * @return bool Is the account's subscription cancelled
+     */
     function _cancelled(address account) internal view returns(bool) {
         return _subscriptions[account].cancelledAt != 0;
     }
 
+    /**
+     * @notice Process the charging
+     * @dev Emits {Charged} event
+     * Throws if the balance is not enough to charge {amountToCharge}
+     * @param account The address of the account
+     *        MUST be subscribed
+     * @param operator The address of the operator, who performs the charging
+     * @param planIdx The index of the plan
+     * @param amountToCharge The amount ETH to charge
+     * @param periodsToCharge The number of periods to charge
+     * @param pay Whether to pay the charged amount to the recipient
+     */
     function _charge(
         address account, 
         address operator, 
@@ -350,10 +386,17 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _decreaseBalance(account, amountToCharge);
         _subscriptions[account].chargedPeriods += periodsToCharge;
         if (pay) _pay(amountToCharge);
-        emit Charged(account, operator, planIdx, amountToCharge);
+        emit Charged(account, operator, planIdx, periodsToCharge, amountToCharge);
     }
 
-    /// @dev account MUST be subscribed
+    /**
+     * @param account Address of the account 
+     *        MUST be subscribed
+     * @param makeDiscount Whether to make discount according to the plan's discount value
+     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
+     * @return periodsToCharge Total number of periods to charge
+     * @return rate Rate to charge for the period
+     */
     function _calcCharge(address account, bool makeDiscount) internal view returns (
         uint amountToCharge, 
         uint periodsToCharge,
@@ -387,21 +430,52 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
     }
 
+    /**
+     * @dev Decrease the balance of {account} by {amount}
+     * @param account Address of the account
+     * @param amount Amount to decrease the balance
+     */
     function _decreaseBalance(address account, uint amount) internal {
         uint balance = balanceOf(account);
         if (amount > balance) {
             revert InsufficientBalance(balance, amount);
         }
         unchecked {
+            // never overflows, checked above
             _balances[account] = balance - amount;
         }
     }
 
+    /**
+     * @dev a hook, called before executing deposit
+     * Executes if the user has a subscription and it has not been cancelled. 
+     * If the plan associated with the current subscription is active and the subscription was inactive due to insufficient balance, 
+     * it will be restored. Since the restoring process involves overwriting {startedAt}, 
+     * data on previous debts will be lost. Therefore the hook charges debt periods before updating the subscription's data.
+     * @param account Address of the account
+     * @param amount Amount to deposit
+     */
     function _beforeDeposit(address account, uint amount) internal virtual {
         Subscription storage subscription = _subscriptions[account];
         if (!_subscribed(account) || _cancelled(account)) return;
 
-        Plan storage plan = _plans[subscription.planIdx];
+        uint planIdx = subscription.planIdx;
+
+        // Charge debt since current "startedAt" will be updated to prevent the contract owner from charging for inactive periods
+        // So if don't charge now, the debt data will be lost
+        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, true);
+        if (periodsToCharge > 0) {
+            _charge(
+                msg.sender, 
+                msg.sender, 
+                planIdx, 
+                amountToCharge, 
+                periodsToCharge, 
+                amountToCharge > 0
+            );
+        }
+
+        Plan storage plan = _plans[planIdx];
         if (plan.disabledAt != 0) return;
 
         uint fundedUntil = _calcFundedUntil(
@@ -412,30 +486,56 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             plan.period
         );
 
+        // Don't restore if the subscription is still active
         if (block.timestamp <= fundedUntil) return;
 
         fundedUntil += (amount / plan.rate) * plan.period;
 
+        // Restore if the subscription will be activated after adding the deposit to the balance
+        // Otherwise the contract owner will be able to abuse by charging for inactive periods
         if (block.timestamp <= fundedUntil) {
             subscription.startedAt = block.timestamp;
             emit Restored(account, subscription.planIdx);
         }
     }
 
+    /**
+     * @dev a hook, called after executing deposit
+     * @param account Address of the account
+     * @param amount Amount to deposit
+     */
     function _afterDeposit(address account, uint amount) internal virtual {}
 
+    /**
+     * @dev Called after charging to store the charged amount and makes it possible to withdraw it by the contract owner
+     * @param amount Amount to pay
+     */
     function _pay(uint amount) internal {
-        bool success = _transfer(recipient, amount);
-        if (!success) {
-            failedPaymentAmount += amount;
-        }
+        paidAmount += amount;
     }
 
+    /**
+     * @dev Transfer {amount} ETH from the contract to {to}
+     * @param to Address of the recipient
+     * @param amount Amount to transfer
+     */
     function _transfer(address to, uint amount) internal returns(bool) {
         (bool success, ) = to.call{value: amount}("");
         return success;
     }
 
+    /**
+     * @dev Calculates the number of periods that have not been charged (debt periods)
+     * @param startedAt Timestamp at which the subscription started
+     * @param cancelledAt Timestamp at which the subscription was cancelled
+     *        MUST be 0 if the subscription has not been cancelled
+     * @param chargedPeriods Number of periods that have been charged
+     * @param planDisabledAt Timestamp at which the plan was disabled
+     *        MUST be 0 if the plan is active
+     * @param period Period of the plan
+     * @param rate Amount of ETH to charge for each period
+     * @param balance Current balance of the account
+     */
     function _calcDebtPeriods(
         uint startedAt,
         uint cancelledAt,
@@ -445,7 +545,8 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         uint rate,
         uint balance
     ) internal view returns(uint) {
-        uint finitePeriods = _calcFinitePeriods(
+        // Calculates the number of complete periods that have passed since the subscription started
+        uint completePeriods = _calcCompletePeriods(
             startedAt,
             planDisabledAt,
             cancelledAt,
@@ -453,17 +554,31 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             false
         );
 
-        if (finitePeriods <= chargedPeriods) return 0;
+        // Debt periods are 0 if there has been charged as many periods as have passed
+        if (completePeriods <= chargedPeriods) return 0;
 
         uint unchargedPeriods;
         unchecked {
-            unchargedPeriods = finitePeriods - chargedPeriods;
+            // never overflows, checked above
+            unchargedPeriods = completePeriods - chargedPeriods;
         }
 
+        // Debt periods are minimum of uncharged periods and periods that can be paid with the current balance.
+        // Account cannot pay more than the current balance in terms of periods
         return unchargedPeriods.min(balance / rate);
     }
 
-    function _calcFinitePeriods(
+    /**
+     * @dev Calculates the number of complete periods that have passed since {startedAt}
+     * @param startedAt Timestamp at which the subscription started
+     * @param planDisabledAt Timestamp at which the plan was disabled
+     *        MUST be 0 if the plan is active
+     * @param cancelledAt Timestamp at which the subscription was cancelled
+     *        MUST be 0 if the subscription has not been cancelled
+     * @param period Period of the plan
+     * @param roundUp If true, rounds up the result (useful when need to include the current period)
+     */
+    function _calcCompletePeriods(
         uint startedAt,
         uint planDisabledAt,
         uint cancelledAt,
@@ -471,15 +586,21 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         bool roundUp
     ) internal view returns(uint) {
 
+        // Calculates timestamp at which the subscription possibly ends
+        // due to the plan being disabled or the subscription being cancelled
+        // If subscription is still active, it's possible to take the current timestamp
+        // since we calculate the number of COMPLETE periods (which have fully already passed)
         uint endsAt = Math.min(
             planDisabledAt == 0 ? block.timestamp : planDisabledAt,
             cancelledAt == 0 ? block.timestamp : cancelledAt
         );
 
+        // Case when the subscription has not started yet (for example, the plan has a trial period)
         if (endsAt < startedAt) return 0;
 
         uint timePassed;
         unchecked {
+            // never overflows, checked above
             timePassed = endsAt - startedAt;
         }
 
@@ -487,6 +608,14 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return timePassed / period;
     }
 
+    /**
+     * @dev Calculates how long the subscription will be active based on the balance
+     * @param startedAt Timestamp at which the subscription started
+     * @param chargedPeriods Number of periods that have been charged
+     * @param balance Current balance of the account
+     * @param rate Amount of ETH to charge for each period
+     * @param period Period of the plan
+     */
     function _calcFundedUntil(
         uint startedAt, 
         uint chargedPeriods, 
@@ -494,6 +623,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         uint rate, 
         uint period
     ) internal pure returns(uint) {
+        // {balance / rate} can be interpreted as the number of periods that can be paid with the current balance
         return startedAt + (chargedPeriods + balance / rate) * period;
     }
 }
