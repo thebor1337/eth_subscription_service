@@ -334,7 +334,7 @@ interface IStandaloneSubscriptionService {
     /**
      * @notice Adds a new plan
      * @dev Adds a new plan to the plans array.
-     *  
+     * 
      * Emits {PlanAdded} event
      *
      * Throws, if some of the parameters are not valid

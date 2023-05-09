@@ -17,7 +17,6 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 
 // ! TODO проверить невозможность ситуации, когда кол-во chargedPeriods больше, чем finitePeriods
 
-
 contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
     using Math for uint;
 
@@ -85,8 +84,6 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     function validUntil(address account) public view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
         Plan storage plan = _plans[_subscriptions[account].planIdx];
-
-        // TODO тут точно надо использовать текущий баланс, а не доступный баланс?
 
         uint startedAt = subscription.startedAt;
         uint period = plan.period;
