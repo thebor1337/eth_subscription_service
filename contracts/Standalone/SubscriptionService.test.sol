@@ -62,17 +62,34 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         return _transfer(to, amount);
     }
 
+    function testCalcCharge(
+        uint periodsToCharge,
+        uint discountPercent,
+        uint rate
+    ) external pure returns(
+        uint amountToCharge,
+        uint adjustedRate
+    ) {
+        return _calcCharge(
+            periodsToCharge,
+            discountPercent,
+            rate
+        );
+    }
+
     function testCalcDebtPeriods(
         uint startedAt,
+        uint maxUntilAt,
         uint cancelledAt,
         uint chargedPeriods,
         uint planDisabledAt,
         uint period,
         uint rate,
         uint balance
-    ) external view returns(uint) {
+    ) external pure returns(uint) {
         return _calcDebtPeriods(
             startedAt,
+            maxUntilAt,
             cancelledAt,
             chargedPeriods,
             planDisabledAt,
@@ -82,21 +99,21 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         );
     }
 
-    function testCalcCompletePeriods(
+    function testCalcCountedPeriods(
         uint startedAt,
         uint maxUntilAt,
         uint planDisabledAt,
         uint cancelledAt,
         uint period,
-        bool roundUp
+        bool countNext
     ) external pure returns(uint) {
-        return _calcCompletePeriods(
+        return _calcCountedPeriods(
             startedAt,
             maxUntilAt,
             planDisabledAt,
             cancelledAt,
             period,
-            roundUp
+            countNext
         );
     }
 

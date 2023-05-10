@@ -416,10 +416,10 @@ function testCalcCharge(address account, bool makeDiscount) external view return
 | periodsToCharge | uint256 | undefined |
 | rate | uint256 | undefined |
 
-### testCalcCompletePeriods
+### testCalcCountedPeriods
 
 ```solidity
-function testCalcCompletePeriods(uint256 startedAt, uint256 maxUntilAt, uint256 planDisabledAt, uint256 cancelledAt, uint256 period, bool roundUp) external pure returns (uint256)
+function testCalcCountedPeriods(uint256 startedAt, uint256 maxUntilAt, uint256 planDisabledAt, uint256 cancelledAt, uint256 period, bool countNext) external pure returns (uint256)
 ```
 
 
@@ -435,7 +435,7 @@ function testCalcCompletePeriods(uint256 startedAt, uint256 maxUntilAt, uint256 
 | planDisabledAt | uint256 | undefined |
 | cancelledAt | uint256 | undefined |
 | period | uint256 | undefined |
-| roundUp | bool | undefined |
+| countNext | bool | undefined |
 
 #### Returns
 
@@ -446,7 +446,7 @@ function testCalcCompletePeriods(uint256 startedAt, uint256 maxUntilAt, uint256 
 ### testCalcDebtPeriods
 
 ```solidity
-function testCalcDebtPeriods(uint256 startedAt, uint256 cancelledAt, uint256 chargedPeriods, uint256 planDisabledAt, uint256 period, uint256 rate, uint256 balance) external view returns (uint256)
+function testCalcDebtPeriods(uint256 startedAt, uint256 maxUntilAt, uint256 cancelledAt, uint256 chargedPeriods, uint256 planDisabledAt, uint256 period, uint256 rate, uint256 balance) external pure returns (uint256)
 ```
 
 
@@ -458,6 +458,7 @@ function testCalcDebtPeriods(uint256 startedAt, uint256 cancelledAt, uint256 cha
 | Name | Type | Description |
 |---|---|---|
 | startedAt | uint256 | undefined |
+| maxUntilAt | uint256 | undefined |
 | cancelledAt | uint256 | undefined |
 | chargedPeriods | uint256 | undefined |
 | planDisabledAt | uint256 | undefined |

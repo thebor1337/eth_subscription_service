@@ -16,6 +16,8 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 // ? RentalNFT привязать к стандарту подписок
 
 // ! TODO проверить невозможность ситуации, когда кол-во chargedPeriods больше, чем finitePeriods
+// TODO актуализировать документацию
+// TODO поправить интерфейс (изменились функции)
 
 contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
     using Math for uint;
@@ -54,6 +56,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         uint debtPeriods = _calcDebtPeriods(
             subscription.startedAt, 
+            block.timestamp,
             subscription.cancelledAt, 
             subscription.chargedPeriods, 
             plan.disabledAt, 
@@ -86,7 +89,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         if (_planDisabled(planIdx) || _cancelled(account)) {
             uint period = plan.period;
             uint startedAt = subscription.startedAt;
-            uint maxPeriods = _calcCompletePeriods(
+            uint maxCountedPeriods = _calcCountedPeriods(
                 startedAt, 
                 block.timestamp,
                 plan.disabledAt, 
@@ -94,7 +97,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
                 period, 
                 true
             );
-            return startedAt + maxPeriods * period;
+            return startedAt + maxCountedPeriods * period;
         }
 
         return _calcFundedUntil(
@@ -119,7 +122,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         uint startedAt = subscription.startedAt;
         uint period = plan.period;
 
-        uint completePeriods = _calcCompletePeriods(
+        uint countedPeriods = _calcCountedPeriods(
             startedAt, 
             block.timestamp,
             plan.disabledAt, 
@@ -128,8 +131,8 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             false
         );
 
-        if (completePeriods > subscription.chargedPeriods) return 0;
-        return startedAt + completePeriods * period;
+        if (countedPeriods > subscription.chargedPeriods) return 0;
+        return startedAt + countedPeriods * period;
     }
 
     /// @inheritdoc IStandaloneSubscriptionService
@@ -186,7 +189,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         subscription.cancelledAt = block.timestamp;
 
-        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, true);
+        (uint amountToCharge, uint periodsToCharge, ) = previewCharge(msg.sender, true);
         if (periodsToCharge > 0) {
             _charge(
                 msg.sender, 
@@ -201,9 +204,47 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Cancelled(msg.sender, planIdx);
     }
 
+    /**
+     * @param account Address of the account
+     * @param makeDiscount Whether to apply discount
+     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
+     * @return periodsToCharge Total number of periods to charge
+     * @return rate Rate to charge for the period
+     */
+    function previewCharge(address account, bool makeDiscount) public view returns(
+        uint amountToCharge, 
+        uint periodsToCharge,
+        uint rate
+    ) {
+        if (!_subscribed(account)) return (0, 0, 0);
+
+        Subscription storage subscription = _subscriptions[account];
+        Plan storage plan = _plans[subscription.planIdx];
+
+        periodsToCharge = _calcDebtPeriods(
+            subscription.startedAt, 
+            block.timestamp,
+            subscription.cancelledAt, 
+            subscription.chargedPeriods, 
+            plan.disabledAt, 
+            plan.period, 
+            plan.rate, 
+            balanceOf(account)
+        );
+        
+        if (periodsToCharge > 0) {
+            (amountToCharge, rate) = _calcCharge(
+                periodsToCharge, 
+                // {plan.chargeDiscount}'s range is restricted by addPlan()
+                (makeDiscount) ? plan.chargeDiscount : 0,
+                rate
+            );
+        }
+    }
+
     /// @inheritdoc IStandaloneSubscriptionService
     function charge(address account) external mustBeSubscribed(account) {
-        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(account, msg.sender == account);
+        (uint amountToCharge, uint periodsToCharge, ) = previewCharge(account, account == msg.sender);
         if (periodsToCharge == 0) revert NothingToCharge();
         _charge(
             account, 
@@ -225,7 +266,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
             if (!_subscribed(account)) continue;
             
-            (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(account, msg.sender == account);
+            (uint amountToCharge, uint periodsToCharge, ) = previewCharge(account, account == msg.sender);
             
             if (periodsToCharge == 0) continue;
             if (!charged) charged = true;
@@ -430,7 +471,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         // Charge debt since current "startedAt" will be updated to prevent the contract owner from charging for inactive periods
         // So if don't charge now, the debt data will be lost
-        (uint amountToCharge, uint periodsToCharge, ) = _calcCharge(msg.sender, true);
+        (uint amountToCharge, uint periodsToCharge, ) = previewCharge(msg.sender, true);
         if (periodsToCharge > 0) {
             _charge(
                 msg.sender, 
@@ -493,44 +534,32 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
-     * @param account Address of the account 
-     *        MUST be subscribed
-     * @param makeDiscount Whether to make discount according to the plan's discount value
+     * @param periodsToCharge Total number of periods to charge
+     * @param discountPercent Discount to apply to the rate
+     *        MUST be less than or equal to 100
+     * @param rate Desired rate to charge for the period
      * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
-     * @return periodsToCharge Total number of periods to charge
-     * @return rate Rate to charge for the period
+     * @return adjustedRate Rate to charge for the period
      */
-    function _calcCharge(address account, bool makeDiscount) internal view returns (
-        uint amountToCharge, 
+    function _calcCharge(
         uint periodsToCharge,
+        uint discountPercent,
         uint rate
+    ) internal pure returns(
+        uint amountToCharge, 
+        uint adjustedRate
     ) {
-        Subscription storage subscription = _subscriptions[account];
-        Plan storage plan = _plans[subscription.planIdx];
-
-        rate = plan.rate;
-
-        periodsToCharge = _calcDebtPeriods(
-            subscription.startedAt, 
-            subscription.cancelledAt, 
-            subscription.chargedPeriods, 
-            plan.disabledAt, 
-            plan.period, 
-            rate, 
-            balanceOf(account)
-        );
-
-        if (periodsToCharge > 0) {
-            if (makeDiscount) {
-                uint ratio;
-                unchecked {
-                    // will never overflow, plan.chargeDiscount is restricted to 0-100
-                    ratio = 100 - plan.chargeDiscount;
-                }
-                rate = rate.mulDiv(ratio, 100);
+        if (discountPercent == 0) {
+            adjustedRate = rate;
+        } else {
+            uint percent;
+            unchecked {
+                // will never overflows, {discountPercent} restricted to 0-100 a-priory
+                percent = 100 - discountPercent;
             }
-            amountToCharge = periodsToCharge * rate;
+            adjustedRate = rate.mulDiv(percent, 100);
         }
+        amountToCharge = periodsToCharge * adjustedRate;
     }
 
     /**
@@ -547,17 +576,18 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      */
     function _calcDebtPeriods(
         uint startedAt,
+        uint maxUntilAt,
         uint cancelledAt,
         uint chargedPeriods,
         uint planDisabledAt,
         uint period,
         uint rate,
         uint balance
-    ) internal view returns(uint) {
+    ) internal pure returns(uint) {
         // Calculates the number of complete periods that have passed since the subscription started
-        uint completePeriods = _calcCompletePeriods(
+        uint countedPeriods = _calcCountedPeriods(
             startedAt,
-            block.timestamp,
+            maxUntilAt,
             planDisabledAt,
             cancelledAt,
             period,
@@ -565,12 +595,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
 
         // Debt periods are 0 if there has been charged as many periods as have passed
-        if (completePeriods <= chargedPeriods) return 0;
+        if (countedPeriods <= chargedPeriods) return 0;
 
         uint unchargedPeriods;
         unchecked {
             // never overflows, checked above
-            unchargedPeriods = completePeriods - chargedPeriods;
+            unchargedPeriods = countedPeriods - chargedPeriods;
         }
 
         // Debt periods are minimum of uncharged periods and periods that can be paid with the current balance.
@@ -586,15 +616,15 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @param cancelledAt Timestamp at which the subscription was cancelled
      *        MUST be 0 if the subscription has not been cancelled
      * @param period Period of the plan
-     * @param roundUp If true, rounds up the result (useful when need to include the current period)
+     * @param countNext If true, rounds up the result (useful when need to include the next period)
      */
-    function _calcCompletePeriods(
+    function _calcCountedPeriods(
         uint startedAt,
         uint maxUntilAt,
         uint planDisabledAt,
         uint cancelledAt,
         uint period,
-        bool roundUp
+        bool countNext
     ) internal pure returns(uint) {
 
         // Calculates timestamp at which the subscription possibly ends
@@ -607,7 +637,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
 
         // Case when the subscription has not started yet (for example, the plan has a trial period)
-        if (untilAt < startedAt) return 0;
+        if (untilAt < startedAt) return (countNext) ? 1 : 0;
 
         uint timePassed;
         unchecked {
@@ -615,8 +645,8 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             timePassed = untilAt - startedAt;
         }
 
-        if (roundUp) return timePassed.ceilDiv(period);
-        return timePassed / period;
+        if (countNext) return timePassed.ceilDiv(period) + 1;
+        return (timePassed / period) + 1;
     }
 
     /**
@@ -625,6 +655,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @param chargedPeriods Number of periods that have been charged
      * @param balance Current balance of the account
      * @param rate Amount of ETH to charge for each period
+     *        MUST NOT be 0
      * @param period Period of the plan
      */
     function _calcFundedUntil(
