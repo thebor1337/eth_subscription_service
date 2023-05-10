@@ -176,6 +176,23 @@ function dummyCancel(address account, uint256 timestamp) external nonpayable
 | account | address | undefined |
 | timestamp | uint256 | undefined |
 
+### dummyDeposit
+
+```solidity
+function dummyDeposit(address account, uint256 amount) external payable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| amount | uint256 | undefined |
+
 ### getPlan
 
 ```solidity
@@ -686,7 +703,7 @@ function testSubscribed(address account) external view returns (bool)
 ### testTransfer
 
 ```solidity
-function testTransfer(address to, uint256 amount) external nonpayable returns (bool)
+function testTransfer(address to, uint256 amount) external nonpayable
 ```
 
 
@@ -699,12 +716,6 @@ function testTransfer(address to, uint256 amount) external nonpayable returns (b
 |---|---|---|
 | to | address | undefined |
 | amount | uint256 | undefined |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | bool | undefined |
 
 ### transferOwnership
 

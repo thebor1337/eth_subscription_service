@@ -9,6 +9,7 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
 
     uint private constant PLANS_SLOT = 1;
     uint private constant SUBSCRIPTTIONS_SLOT = 3;
+    uint private constant BALANCES_SLOT = 4;
     uint private constant CANCELLED_AT_OFFSET_SLOT = 4;
 
     function testSubscribed(address account) external view returns(bool) {
@@ -50,8 +51,8 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         _pay(amount);
     }
 
-    function testTransfer(address to, uint amount) external returns(bool) {
-        return _transfer(to, amount);
+    function testTransfer(address to, uint amount) external {
+        require(_transfer(to, amount));
     }
 
     function testCalcCharge(
@@ -130,13 +131,20 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
     }
 
     function dummyCancel(address account, uint timestamp) external {
-        writeUint(
+        _writeUint(
             uint(keccak256(abi.encode(account, SUBSCRIPTTIONS_SLOT))) + CANCELLED_AT_OFFSET_SLOT, 
             timestamp
         );
     }
 
-    function writeUint(uint slot, uint value) private {
+    function dummyDeposit(address account, uint amount) external payable {
+        _writeUint(
+            uint(keccak256(abi.encode(account, BALANCES_SLOT))), 
+            amount
+        );
+    }
+
+    function _writeUint(uint slot, uint value) private {
         assembly {
             sstore(slot, value)
         }
