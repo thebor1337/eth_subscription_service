@@ -292,6 +292,31 @@ function paidAmount() external view returns (uint256)
 |---|---|---|
 | _0 | uint256 | undefined |
 
+### previewCharge
+
+```solidity
+function previewCharge(address account, bool makeDiscount) external view returns (uint256 amountToCharge, uint256 periodsToCharge, uint256 rate)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | Address of the account |
+| makeDiscount | bool | Whether to apply discount |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| amountToCharge | uint256 | Total ETH amount to charge for all considered periods (taking into account the discount) |
+| periodsToCharge | uint256 | Total number of periods to charge |
+| rate | uint256 | Rate to charge for the period |
+
 ### renounceOwnership
 
 ```solidity
@@ -394,7 +419,7 @@ function testBeforeDeposit(address account, uint256 amount) external nonpayable
 ### testCalcCharge
 
 ```solidity
-function testCalcCharge(address account, bool makeDiscount) external view returns (uint256 amountToCharge, uint256 periodsToCharge, uint256 rate)
+function testCalcCharge(uint256 periodsToCharge, uint256 discountPercent, uint256 rate) external pure returns (uint256 amountToCharge, uint256 adjustedRate)
 ```
 
 
@@ -405,16 +430,16 @@ function testCalcCharge(address account, bool makeDiscount) external view return
 
 | Name | Type | Description |
 |---|---|---|
-| account | address | undefined |
-| makeDiscount | bool | undefined |
+| periodsToCharge | uint256 | undefined |
+| discountPercent | uint256 | undefined |
+| rate | uint256 | undefined |
 
 #### Returns
 
 | Name | Type | Description |
 |---|---|---|
 | amountToCharge | uint256 | undefined |
-| periodsToCharge | uint256 | undefined |
-| rate | uint256 | undefined |
+| adjustedRate | uint256 | undefined |
 
 ### testCalcCountedPeriods
 

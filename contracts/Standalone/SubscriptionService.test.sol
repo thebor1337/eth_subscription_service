@@ -38,14 +38,6 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         _charge(account, operator, planIdx, amountToCharge, periodsToCharge, pay);
     }
 
-    function testCalcCharge(address account, bool makeDiscount) external view returns (
-        uint amountToCharge, 
-        uint periodsToCharge,
-        uint rate
-    ) {
-        return _calcCharge(account, makeDiscount);
-    }
-
     function testDecreaseBalance(address account, uint amount) external {
         _decreaseBalance(account, amount);
     }
