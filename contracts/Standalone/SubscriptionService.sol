@@ -76,32 +76,33 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /// @inheritdoc IStandaloneSubscriptionService
-    function isPlanActive(uint planIdx) public view returns(bool) {
-        return _plans[planIdx].disabledAt != 0 || _plans[planIdx].closed;
-    }
-
-    /// @inheritdoc IStandaloneSubscriptionService
     function validUntil(address account) public view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
-        Plan storage plan = _plans[_subscriptions[account].planIdx];
 
-        uint startedAt = subscription.startedAt;
-        uint period = plan.period;
-        uint planDisabledAt = plan.disabledAt;
-        uint cancelledAt = subscription.cancelledAt;
+        uint planIdx = _subscriptions[account].planIdx;
+        Plan storage plan = _plans[planIdx];
 
         // если план отключен, то подписка не действительна, если начался следующий период после момента отключения
-        if (planDisabledAt != 0 || cancelledAt != 0) {
-            uint maxPeriods = _calcCompletePeriods(startedAt, planDisabledAt, cancelledAt, period, true);
+        if (_planDisabled(planIdx) || _cancelled(account)) {
+            uint period = plan.period;
+            uint startedAt = subscription.startedAt;
+            uint maxPeriods = _calcCompletePeriods(
+                startedAt, 
+                block.timestamp,
+                plan.disabledAt, 
+                subscription.cancelledAt, 
+                period, 
+                true
+            );
             return startedAt + maxPeriods * period;
         }
 
         return _calcFundedUntil(
-            startedAt, 
+            subscription.startedAt, 
             subscription.chargedPeriods, 
             balanceOf(account), 
             plan.rate, 
-            period
+            plan.period
         );
     }
 
@@ -120,6 +121,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         uint completePeriods = _calcCompletePeriods(
             startedAt, 
+            block.timestamp,
             plan.disabledAt, 
             subscription.cancelledAt, 
             period, 
@@ -132,38 +134,29 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
     /// @inheritdoc IStandaloneSubscriptionService
     function subscribe(uint planIdx) external {
-        if (!isPlanActive(planIdx)) revert PlanUnavailable();
-
-        Subscription storage subscription = _subscriptions[msg.sender];
+        if (_planClosed(planIdx) || _planDisabled(planIdx)) revert PlanUnavailable();
 
         if (_subscribed(msg.sender) && !_cancelled(msg.sender)) {
-            uint oldPlanIdx = subscription.planIdx;
-            if (_plans[oldPlanIdx].disabledAt == 0) {
+            uint oldPlanIdx = _subscriptions[msg.sender].planIdx;
+            if (!_planDisabled(oldPlanIdx)) {
                 revert NotCancelled();
             }
             emit Cancelled(msg.sender, oldPlanIdx);
         }
 
         Plan storage plan = _plans[planIdx];
-        uint trial =  _plans[planIdx].trial;
+        uint rate = plan.rate;
+        uint trial =  plan.trial;
 
-        subscription.createdAt = block.timestamp;
-        subscription.planIdx = planIdx;
-        subscription.startedAt = block.timestamp + trial;
-        subscription.cancelledAt = 0;
+        _subscribe(msg.sender, planIdx, trial);
 
         if (trial == 0) {
-            _charge(msg.sender, msg.sender, planIdx, 1, plan.rate, true);
+            _charge(msg.sender, msg.sender, planIdx, 1, rate, true);
         } else {
-            if (balanceOf(msg.sender) < plan.rate) {
-                revert InsufficientBalance(balanceOf(msg.sender), plan.rate);
-            }
-            if (subscription.chargedPeriods != 0) {
-                subscription.chargedPeriods = 0;
+            if (balanceOf(msg.sender) < rate) {
+                revert InsufficientBalance(balanceOf(msg.sender), rate);
             }
         }
-
-        emit Subscribed(msg.sender, planIdx);
     }
 
     /// @inheritdoc IStandaloneSubscriptionService
@@ -172,15 +165,14 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
 
         Subscription storage subscription = _subscriptions[msg.sender];
         uint planIdx = subscription.planIdx;
-        Plan storage plan = _plans[subscription.planIdx];
 
-        if (plan.disabledAt != 0) revert PlanUnavailable();
+        if (_planDisabled(planIdx)) revert PlanUnavailable();
 
         subscription.startedAt = block.timestamp;
         subscription.cancelledAt = 0;
         subscription.chargedPeriods = 0;
 
-        _charge(msg.sender, msg.sender, planIdx, 1, plan.rate, true);
+        _charge(msg.sender, msg.sender, planIdx, 1, _plans[planIdx].rate, true);
 
         emit Restored(msg.sender, planIdx);
     }
@@ -311,7 +303,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @dev See {IStandaloneSubscriptionService-disablePlan}
      */
     function disablePlan(uint planIdx) external onlyOwner {
-        require(_plans[planIdx].disabledAt == 0, "plan already disabled");
+        require(!_planDisabled(planIdx), "plan already disabled");
         _plans[planIdx].disabledAt = block.timestamp;
         emit PlanDisabled(planIdx);
     }
@@ -320,8 +312,8 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @dev See {IStandaloneSubscriptionService-closePlan}
      */
     function closePlan(uint planIdx) external onlyOwner {
-        require(_plans[planIdx].disabledAt == 0, "plan disabled");
-        require(!_plans[planIdx].closed, "plan already closed");
+        require(!_planDisabled(planIdx), "plan disabled");
+        require(!_planClosed(planIdx), "plan already closed");
         _plans[planIdx].closed = true;
         emit PlanClosed(planIdx);
     }
@@ -330,13 +322,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @dev See {IStandaloneSubscriptionService-openPlan}
      */
     function openPlan(uint planIdx) external onlyOwner {
-        require(_plans[planIdx].disabledAt == 0, "plan disabled");
-        require(_plans[planIdx].closed, "plan not closed");
+        require(!_planDisabled(planIdx), "plan disabled");
+        require(_planClosed(planIdx), "plan not closed");
         _plans[planIdx].closed = false;
         emit PlanOpened(planIdx);
     }
 
-    // TODO нужно ли заносить в интерфейс эту функцию?
     function withdrawPayments(address receiver) external onlyOwner {
         require(paidAmount > 0, "nothing to withdraw");
         require(receiver != address(0), "receiver is zero address");
@@ -358,6 +349,26 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      */
     function _cancelled(address account) internal view returns(bool) {
         return _subscriptions[account].cancelledAt != 0;
+    }
+
+    function _planClosed(uint planIdx) internal view returns(bool) {
+        return _plans[planIdx].closed;
+    }
+
+    function _planDisabled(uint planIdx) internal view returns(bool) {
+        return _plans[planIdx].disabledAt != 0;
+    }
+
+    function _subscribe(address account, uint planIdx, uint trial) internal {
+        _subscriptions[account] = Subscription({
+            createdAt: block.timestamp,
+            planIdx: planIdx,
+            startedAt: block.timestamp + trial,
+            cancelledAt: 0,
+            chargedPeriods: 0
+        });
+
+        emit Subscribed(msg.sender, planIdx);
     }
 
     /**
@@ -387,47 +398,6 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
-     * @param account Address of the account 
-     *        MUST be subscribed
-     * @param makeDiscount Whether to make discount according to the plan's discount value
-     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
-     * @return periodsToCharge Total number of periods to charge
-     * @return rate Rate to charge for the period
-     */
-    function _calcCharge(address account, bool makeDiscount) internal view returns (
-        uint amountToCharge, 
-        uint periodsToCharge,
-        uint rate
-    ) {
-        Subscription storage subscription = _subscriptions[account];
-        Plan storage plan = _plans[subscription.planIdx];
-
-        rate = plan.rate;
-
-        periodsToCharge = _calcDebtPeriods(
-            subscription.startedAt, 
-            subscription.cancelledAt, 
-            subscription.chargedPeriods, 
-            plan.disabledAt, 
-            plan.period, 
-            rate, 
-            balanceOf(account)
-        );
-
-        if (periodsToCharge > 0) {
-            if (makeDiscount) {
-                uint ratio;
-                unchecked {
-                    // will never overflow, plan.chargeDiscount is restricted to 0-100
-                    ratio = 100 - plan.chargeDiscount;
-                }
-                rate = rate.mulDiv(ratio, 100);
-            }
-            amountToCharge = periodsToCharge * rate;
-        }
-    }
-
-    /**
      * @dev Decrease the balance of {account} by {amount}
      * @param account Address of the account
      * @param amount Amount to decrease the balance
@@ -453,9 +423,9 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @param amount Amount to deposit
      */
     function _beforeDeposit(address account, uint amount) internal virtual {
-        Subscription storage subscription = _subscriptions[account];
         if (!_subscribed(account) || _cancelled(account)) return;
 
+        Subscription storage subscription = _subscriptions[account];
         uint planIdx = subscription.planIdx;
 
         // Charge debt since current "startedAt" will be updated to prevent the contract owner from charging for inactive periods
@@ -472,8 +442,9 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             );
         }
 
+        if (_planDisabled(planIdx)) return;
+
         Plan storage plan = _plans[planIdx];
-        if (plan.disabledAt != 0) return;
 
         uint fundedUntil = _calcFundedUntil(
             subscription.startedAt, 
@@ -522,6 +493,47 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
+     * @param account Address of the account 
+     *        MUST be subscribed
+     * @param makeDiscount Whether to make discount according to the plan's discount value
+     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
+     * @return periodsToCharge Total number of periods to charge
+     * @return rate Rate to charge for the period
+     */
+    function _calcCharge(address account, bool makeDiscount) internal view returns (
+        uint amountToCharge, 
+        uint periodsToCharge,
+        uint rate
+    ) {
+        Subscription storage subscription = _subscriptions[account];
+        Plan storage plan = _plans[subscription.planIdx];
+
+        rate = plan.rate;
+
+        periodsToCharge = _calcDebtPeriods(
+            subscription.startedAt, 
+            subscription.cancelledAt, 
+            subscription.chargedPeriods, 
+            plan.disabledAt, 
+            plan.period, 
+            rate, 
+            balanceOf(account)
+        );
+
+        if (periodsToCharge > 0) {
+            if (makeDiscount) {
+                uint ratio;
+                unchecked {
+                    // will never overflow, plan.chargeDiscount is restricted to 0-100
+                    ratio = 100 - plan.chargeDiscount;
+                }
+                rate = rate.mulDiv(ratio, 100);
+            }
+            amountToCharge = periodsToCharge * rate;
+        }
+    }
+
+    /**
      * @dev Calculates the number of periods that have not been charged (debt periods)
      * @param startedAt Timestamp at which the subscription started
      * @param cancelledAt Timestamp at which the subscription was cancelled
@@ -545,6 +557,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         // Calculates the number of complete periods that have passed since the subscription started
         uint completePeriods = _calcCompletePeriods(
             startedAt,
+            block.timestamp,
             planDisabledAt,
             cancelledAt,
             period,
@@ -577,28 +590,29 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      */
     function _calcCompletePeriods(
         uint startedAt,
+        uint maxUntilAt,
         uint planDisabledAt,
         uint cancelledAt,
         uint period,
         bool roundUp
-    ) internal view returns(uint) {
+    ) internal pure returns(uint) {
 
         // Calculates timestamp at which the subscription possibly ends
         // due to the plan being disabled or the subscription being cancelled
         // If subscription is still active, it's possible to take the current timestamp
         // since we calculate the number of COMPLETE periods (which have fully already passed)
-        uint endsAt = Math.min(
-            planDisabledAt == 0 ? block.timestamp : planDisabledAt,
-            cancelledAt == 0 ? block.timestamp : cancelledAt
+        uint untilAt = Math.min(
+            planDisabledAt == 0 ? maxUntilAt : planDisabledAt,
+            cancelledAt == 0 ? maxUntilAt : cancelledAt
         );
 
         // Case when the subscription has not started yet (for example, the plan has a trial period)
-        if (endsAt < startedAt) return 0;
+        if (untilAt < startedAt) return 0;
 
         uint timePassed;
         unchecked {
             // never overflows, checked above
-            timePassed = endsAt - startedAt;
+            timePassed = untilAt - startedAt;
         }
 
         if (roundUp) return timePassed.ceilDiv(period);

@@ -10,50 +10,6 @@
 
 ## Methods
 
-### __cancelled
-
-```solidity
-function __cancelled(address account) external view returns (bool)
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| account | address | undefined |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | bool | undefined |
-
-### __subscribed
-
-```solidity
-function __subscribed(address account) external view returns (bool)
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| account | address | undefined |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | bool | undefined |
-
 ### addPlan
 
 ```solidity
@@ -203,6 +159,23 @@ function disablePlan(uint256 planIdx) external nonpayable
 |---|---|---|
 | planIdx | uint256 | undefined |
 
+### dummyCancel
+
+```solidity
+function dummyCancel(address account, uint256 timestamp) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| timestamp | uint256 | undefined |
+
 ### getPlan
 
 ```solidity
@@ -224,28 +197,6 @@ function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubsc
 | Name | Type | Description |
 |---|---|---|
 | _0 | IStandaloneSubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
-
-### isPlanActive
-
-```solidity
-function isPlanActive(uint256 planIdx) external view returns (bool)
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| planIdx | uint256 | The index of the plan in the plans array |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | bool | bool Wheather the plan is active (not disabled and not closed) |
 
 ### isValid
 
@@ -422,6 +373,312 @@ function subscriptionOf(address account) external view returns (struct IStandalo
 | Name | Type | Description |
 |---|---|---|
 | _0 | IStandaloneSubscriptionService.Subscription | subscription {Subcription} object associated with the account |
+
+### testBeforeDeposit
+
+```solidity
+function testBeforeDeposit(address account, uint256 amount) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| amount | uint256 | undefined |
+
+### testCalcCharge
+
+```solidity
+function testCalcCharge(address account, bool makeDiscount) external view returns (uint256 amountToCharge, uint256 periodsToCharge, uint256 rate)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| makeDiscount | bool | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| amountToCharge | uint256 | undefined |
+| periodsToCharge | uint256 | undefined |
+| rate | uint256 | undefined |
+
+### testCalcCompletePeriods
+
+```solidity
+function testCalcCompletePeriods(uint256 startedAt, uint256 maxUntilAt, uint256 planDisabledAt, uint256 cancelledAt, uint256 period, bool roundUp) external pure returns (uint256)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| startedAt | uint256 | undefined |
+| maxUntilAt | uint256 | undefined |
+| planDisabledAt | uint256 | undefined |
+| cancelledAt | uint256 | undefined |
+| period | uint256 | undefined |
+| roundUp | bool | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | uint256 | undefined |
+
+### testCalcDebtPeriods
+
+```solidity
+function testCalcDebtPeriods(uint256 startedAt, uint256 cancelledAt, uint256 chargedPeriods, uint256 planDisabledAt, uint256 period, uint256 rate, uint256 balance) external view returns (uint256)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| startedAt | uint256 | undefined |
+| cancelledAt | uint256 | undefined |
+| chargedPeriods | uint256 | undefined |
+| planDisabledAt | uint256 | undefined |
+| period | uint256 | undefined |
+| rate | uint256 | undefined |
+| balance | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | uint256 | undefined |
+
+### testCalcFundedUntil
+
+```solidity
+function testCalcFundedUntil(uint256 startedAt, uint256 chargedPeriods, uint256 balance, uint256 rate, uint256 period) external pure returns (uint256)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| startedAt | uint256 | undefined |
+| chargedPeriods | uint256 | undefined |
+| balance | uint256 | undefined |
+| rate | uint256 | undefined |
+| period | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | uint256 | undefined |
+
+### testCancelled
+
+```solidity
+function testCancelled(address account) external view returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
+
+### testCharge
+
+```solidity
+function testCharge(address account, address operator, uint256 planIdx, uint256 amountToCharge, uint256 periodsToCharge, bool pay) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| operator | address | undefined |
+| planIdx | uint256 | undefined |
+| amountToCharge | uint256 | undefined |
+| periodsToCharge | uint256 | undefined |
+| pay | bool | undefined |
+
+### testDecreaseBalance
+
+```solidity
+function testDecreaseBalance(address account, uint256 amount) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| amount | uint256 | undefined |
+
+### testPay
+
+```solidity
+function testPay(uint256 amount) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| amount | uint256 | undefined |
+
+### testPlanClosed
+
+```solidity
+function testPlanClosed(uint256 planIdx) external view returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| planIdx | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
+
+### testPlanDisabled
+
+```solidity
+function testPlanDisabled(uint256 planIdx) external view returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| planIdx | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
+
+### testSubscribe
+
+```solidity
+function testSubscribe(address account, uint256 planIdx, uint256 trial) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| planIdx | uint256 | undefined |
+| trial | uint256 | undefined |
+
+### testSubscribed
+
+```solidity
+function testSubscribed(address account) external view returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
+
+### testTransfer
+
+```solidity
+function testTransfer(address to, uint256 amount) external nonpayable returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| to | address | undefined |
+| amount | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
 
 ### transferOwnership
 

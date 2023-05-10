@@ -181,28 +181,6 @@ function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubsc
 |---|---|---|
 | _0 | IStandaloneSubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
 
-### isPlanActive
-
-```solidity
-function isPlanActive(uint256 planIdx) external view returns (bool)
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| planIdx | uint256 | The index of the plan in the plans array |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | bool | bool Wheather the plan is active (not disabled and not closed) |
-
 ### isValid
 
 ```solidity

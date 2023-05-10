@@ -168,12 +168,6 @@ interface IStandaloneSubscriptionService {
     function subscriptionOf(address account) external view returns (Subscription memory);
 
     /**
-     * @param planIdx The index of the plan in the plans array
-     * @return bool Wheather the plan is active (not disabled and not closed)
-     */
-    function isPlanActive(uint planIdx) external view returns (bool);
-
-    /**
      * @dev A subscription is considered valid if:
      * - all used periods are charged (including the current)
      * - there is enough ETH on the balance to charge for all used periods (including the current)
