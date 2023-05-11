@@ -134,6 +134,7 @@ interface IStandaloneSubscriptionService {
     event RecipientChanged(address indexed oldRecipient, address indexed newRecipient);
 
     error InsufficientBalance(uint available, uint required);
+    error AlreadySubscribed();
     error NotSubscribed();
     error NotCancelled();
     error AlreadyCancelled();

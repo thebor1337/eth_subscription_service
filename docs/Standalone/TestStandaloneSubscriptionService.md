@@ -1009,6 +1009,17 @@ error AlreadyCancelled()
 
 
 
+### AlreadySubscribed
+
+```solidity
+error AlreadySubscribed()
+```
+
+
+
+
+
+
 ### InsufficientBalance
 
 ```solidity

@@ -4,20 +4,6 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { TestStandaloneSubscriptionService } from "../typechain-types";
 
-import type {
-    BaseContract,
-    BigNumber,
-    BigNumberish,
-    BytesLike,
-    CallOverrides,
-    ContractTransaction,
-    Overrides,
-    PayableOverrides,
-    PopulatedTransaction,
-    Signer,
-    utils,
-} from "ethers";
-
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 function getUtcTimestamp() {
@@ -27,7 +13,7 @@ function getUtcTimestamp() {
 const DAY = 24 * 60 * 60;
 
 describe("StandaloneSubscriptionService", () => {
-    async function deployTest() {
+    async function deploy() {
         const [owner, user1, user2] = await ethers.getSigners();
         const ServiceFactory = await ethers.getContractFactory("TestStandaloneSubscriptionService");
         const service = await ServiceFactory.deploy();
@@ -41,7 +27,7 @@ describe("StandaloneSubscriptionService", () => {
         let user1: SignerWithAddress;
 
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
             owner = deployment.owner;
             user1 = deployment.user1;
@@ -223,7 +209,7 @@ describe("StandaloneSubscriptionService", () => {
         let service: TestStandaloneSubscriptionService;
         
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
         });
 
@@ -418,7 +404,7 @@ describe("StandaloneSubscriptionService", () => {
         let user1: SignerWithAddress;
 
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
             owner = deployment.owner;
             user1 = deployment.user1;
@@ -486,7 +472,7 @@ describe("StandaloneSubscriptionService", () => {
         let user1: SignerWithAddress;
         
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
             owner = deployment.owner;
             user1 = deployment.user1;
@@ -562,6 +548,239 @@ describe("StandaloneSubscriptionService", () => {
                     });
                 });
             });
+
+            describe("_charge()", () => {
+                const rate = 30;
+                const initialBalance = 100;
+
+                beforeEach(async () => {
+                    await service.addPlan(DAY, 0, rate, 0);
+                    await service.dummyDeposit(user1.address, initialBalance);
+                    await service.testSubscribe(user1.address, 0, 0);
+                });
+
+                describe("have enough balance", () => {
+                    it("should charge with paying", async () => {
+                        const periodsToCharge = 2;
+                        const amountToCharge = rate * periodsToCharge;
+
+                        await service.testCharge(user1.address, owner.address, 0, amountToCharge, periodsToCharge, true);
+                        expect(await service.balanceOf(user1.address)).to.equal(initialBalance - amountToCharge);
+                        expect(await service.paidAmount()).to.equal(amountToCharge);
+
+                        const subscription = await service.subscriptionOf(user1.address);
+                        expect(subscription.chargedPeriods).to.equal(periodsToCharge);
+                    });
+
+                    it("should charge without paying", async () => {
+                        await service.testCharge(user1.address, owner.address, 0, rate * 2, 2, false);
+                        expect(await service.paidAmount()).to.equal(0);
+                    });
+
+                    it("should emits Charged event", async () => {
+                        const periodsToCharge = 2;
+                        const amountToCharge = rate * periodsToCharge;
+
+                        await expect(service.testCharge(user1.address, owner.address, 0, amountToCharge, periodsToCharge, true))
+                        .to.emit(service, "Charged")
+                        .withArgs(user1.address, owner.address, 0, periodsToCharge, amountToCharge);
+                    });
+                });
+
+                describe("have not enough balance", () => {
+                    it("should revert", async () => {
+                        const periodsToCharge = 4;
+                        const amountToCharge = rate * 4;
+                        await expect(service.testCharge(user1.address, owner.address, 0, amountToCharge, periodsToCharge, true))
+                        .to.be.revertedWithCustomError(service, "InsufficientBalance")
+                        .withArgs(initialBalance, amountToCharge);
+                    });
+                });
+            });
+        });
+
+        describe("subscribe()", () => {
+            const rate = 30;
+
+            describe("when plan unavailable", () => {
+                beforeEach(async () => {
+                    await service.addPlan(DAY, 0, rate, 0);
+                });
+
+                it("should revert if plan is closed", async () => {
+                    await service.closePlan(0);
+                    await expect(service.connect(user1).subscribe(0))
+                    .to.be.revertedWithCustomError(service, "PlanUnavailable");
+                });
+
+                it("should revert if plan is disabled", async () => {
+                    await service.disablePlan(0);
+                    await expect(service.connect(user1).subscribe(0))
+                    .to.be.revertedWithCustomError(service, "PlanUnavailable");
+                });
+            });
+
+            describe("when not subscribed yet", () => {
+                describe("when have enough balance", () => {
+                    beforeEach(async () => {
+                        await service.dummyDeposit(user1.address, 100);
+                    });
+
+                    describe("when plan has no trial period", () => {
+                        beforeEach(async () => {
+                            await service.addPlan(DAY, 0, rate, 0);
+                        });
+
+                        it("should subscribe and charge", async () => {
+                            const oldBalance = await service.balanceOf(user1.address);
+                            const timestamp = getUtcTimestamp() + 10;
+    
+                            await time.setNextBlockTimestamp(timestamp);
+                            await service.connect(user1).subscribe(0);
+    
+                            const subscription = await service.subscriptionOf(user1.address);
+                            expect(subscription.planIdx).to.equal(0);
+                            expect(subscription.createdAt).to.equal(timestamp);
+                            expect(subscription.startedAt).to.equal(timestamp);
+                            expect(subscription.chargedPeriods).to.equal(1);
+                            expect(subscription.cancelledAt).to.equal(0);
+    
+                            expect(await service.balanceOf(user1.address)).to.equal(oldBalance.sub(rate));
+                        });
+
+                        it("should emit Subscribed event", async () => {
+                            const timestamp = getUtcTimestamp() + 10;
+                            await time.setNextBlockTimestamp(timestamp);
+    
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.emit(service, "Subscribed")
+                            .withArgs(user1.address, 0);
+                        });
+
+                        it("should emit Charged event", async () => {
+                            const timestamp = getUtcTimestamp() + 10;
+                            await time.setNextBlockTimestamp(timestamp);
+    
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.emit(service, "Charged")
+                            .withArgs(user1.address, user1.address, 0, 1, rate);
+                        });
+                    });
+
+                    describe("when plan has trial period", () => {
+                        const trial = DAY;
+
+                        beforeEach(async () => {
+                            await service.addPlan(2 * DAY, trial, rate, 0);
+                        });
+
+                        it("should subscribe", async () => {
+                            const oldBalance = await service.balanceOf(user1.address);
+                            const timestamp = getUtcTimestamp() + 10;
+    
+                            await time.setNextBlockTimestamp(timestamp);
+                            await service.connect(user1).subscribe(0);
+    
+                            const subscription = await service.subscriptionOf(user1.address);
+                            expect(subscription.planIdx).to.equal(0);
+                            expect(subscription.createdAt).to.equal(timestamp);
+                            expect(subscription.startedAt).to.equal(timestamp + trial);
+                            expect(subscription.chargedPeriods).to.equal(0);
+                            expect(subscription.cancelledAt).to.equal(0);
+    
+                            expect(await service.balanceOf(user1.address)).to.equal(oldBalance);
+                        });
+
+                        it("should emit Subscribed event", async () => {
+                            const timestamp = getUtcTimestamp() + 10;
+                            await time.setNextBlockTimestamp(timestamp);
+    
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.emit(service, "Subscribed")
+                            .withArgs(user1.address, 0);
+                        });
+    
+                        it("should not emit Charged event", async () => {
+                            const timestamp = getUtcTimestamp() + 10;
+                            await time.setNextBlockTimestamp(timestamp);
+    
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.not.emit(service, "Charged");
+                        });
+                    });
+                });
+
+                describe("when have not enough balance", () => {
+                    const balance = rate - 1;
+                    beforeEach(async () => {
+                        await service.dummyDeposit(user1.address, balance);
+                    });
+
+                    describe("when plan has no trial period", () => {
+                        it("should revert", async () => {
+                            await service.addPlan(DAY, 0, rate, 0);
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.be.revertedWithCustomError(service, "InsufficientBalance")
+                            .withArgs(balance, rate);
+                        });
+                    });
+
+                    describe("when plan has trial period", () => {
+                        it("should revert", async () => {
+                            await service.addPlan(2 * DAY, DAY, rate, 0);
+                            await expect(service.connect(user1).subscribe(0))
+                            .to.be.revertedWithCustomError(service, "InsufficientBalance")
+                            .withArgs(balance, rate);
+                        });
+                    });
+                });
+            });
+
+            describe("when already subscribed", () => {
+                beforeEach(async () => {
+                    await service.dummyDeposit(user1.address, 100);
+                });
+
+                describe("to the same plan", () => {
+                    it("should revert", async () => {
+                        await service.addPlan(DAY, 0, rate, 0);
+                        await service.connect(user1).subscribe(0);
+                        await expect(service.connect(user1).subscribe(0))
+                        .to.be.revertedWithCustomError(service, "AlreadySubscribed");
+                    });
+                });
+
+                describe("to another plan", () => {
+                    beforeEach(async () => {
+                        await service.addPlan(DAY, 0, rate, 0);
+                        await service.connect(user1).subscribe(0);
+                        await service.addPlan(DAY, 0, rate, 0);
+                    });
+
+                    describe("not cancelled", () => {
+                        it("should revert", async () => {
+                            await expect(service.connect(user1).subscribe(1))
+                            .to.be.revertedWithCustomError(service, "AlreadySubscribed");
+                        });
+                    });
+
+                    describe("cancelled", () => {
+                        it("should subscribe", async () => {
+                            await service.dummyCancel(user1.address, getUtcTimestamp() - 10);
+                            const timestamp = getUtcTimestamp() + 10;
+    
+                            await time.setNextBlockTimestamp(timestamp);
+                            await service.connect(user1).subscribe(1);
+    
+                            const subscription = await service.subscriptionOf(user1.address);
+                            expect(subscription.planIdx).to.equal(1);
+                            expect(subscription.createdAt).to.equal(timestamp);
+                            expect(subscription.startedAt).to.equal(timestamp);
+                            expect(subscription.cancelledAt).to.equal(0);
+                        });
+                    });
+                });
+            });
         });
     });
 
@@ -571,7 +790,7 @@ describe("StandaloneSubscriptionService", () => {
         let user1: SignerWithAddress;
 
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
             owner = deployment.owner;
             user1 = deployment.user1;
@@ -588,7 +807,7 @@ describe("StandaloneSubscriptionService", () => {
         let user1: SignerWithAddress;
 
         beforeEach(async () => {
-            const deployment = await loadFixture(deployTest);
+            const deployment = await loadFixture(deploy);
             service = deployment.service;
             owner = deployment.owner;
             user1 = deployment.user1;

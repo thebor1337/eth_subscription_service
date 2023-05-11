@@ -18,6 +18,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 // ! TODO проверить невозможность ситуации, когда кол-во chargedPeriods больше, чем finitePeriods
 // TODO актуализировать документацию
 // TODO поправить интерфейс (изменились функции)
+// TODO plan existing in external functions
 
 contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
     using Math for uint;
@@ -139,12 +140,14 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     function subscribe(uint planIdx) external {
         if (_planClosed(planIdx) || _planDisabled(planIdx)) revert PlanUnavailable();
 
-        if (_subscribed(msg.sender) && !_cancelled(msg.sender)) {
+        if (_subscribed(msg.sender)) {
             uint oldPlanIdx = _subscriptions[msg.sender].planIdx;
-            if (!_planDisabled(oldPlanIdx)) {
-                revert NotCancelled();
+            if (oldPlanIdx == planIdx) {
+                revert AlreadySubscribed();
             }
-            emit Cancelled(msg.sender, oldPlanIdx);
+            if (!_cancelled(msg.sender)) {
+                revert AlreadySubscribed();
+            }
         }
 
         Plan storage plan = _plans[planIdx];
@@ -154,7 +157,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _subscribe(msg.sender, planIdx, trial);
 
         if (trial == 0) {
-            _charge(msg.sender, msg.sender, planIdx, 1, rate, true);
+            _charge(msg.sender, msg.sender, planIdx, rate, 1, true);
         } else {
             if (balanceOf(msg.sender) < rate) {
                 revert InsufficientBalance(balanceOf(msg.sender), rate);
@@ -175,7 +178,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         subscription.cancelledAt = 0;
         subscription.chargedPeriods = 0;
 
-        _charge(msg.sender, msg.sender, planIdx, 1, _plans[planIdx].rate, true);
+        _charge(msg.sender, msg.sender, planIdx, _plans[planIdx].rate, 1, true);
 
         emit Restored(msg.sender, planIdx);
     }
