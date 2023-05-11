@@ -3,14 +3,7 @@ pragma solidity ^0.8.19;
 
 import "./SubscriptionService.sol";
 
-// TODO вернуть стейт переменным private, поменять здесь получение доступа и перезапись их через assembly
-
 contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
-
-    uint private constant PLANS_SLOT = 1;
-    uint private constant SUBSCRIPTTIONS_SLOT = 3;
-    uint private constant BALANCES_SLOT = 4;
-    uint private constant CANCELLED_AT_OFFSET_SLOT = 4;
 
     function testSubscribed(address account) external view returns(bool) {
         return _subscribed(account);
@@ -28,6 +21,18 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         return _planDisabled(planIdx);
     }
 
+    function testSubscribe(address account, uint timestamp, uint planIdx, uint trial) external {
+        _subscribe(account, timestamp, planIdx, trial);
+    }
+
+    function testCancel(address account, uint timestamp, uint planIdx) external {
+        _cancel(account, timestamp, planIdx);
+    }
+
+    function testRestore(address account, uint timestamp, uint planIdx) external {
+        _restore(account, timestamp, planIdx);
+    }
+
     function testCharge(
         address account, 
         address operator, 
@@ -39,12 +44,20 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         _charge(account, operator, planIdx, amountToCharge, periodsToCharge, pay);
     }
 
+    function testIncreaseBalance(address account, uint value) external payable {
+        _increaseBalance(account, value);
+    }
+
     function testDecreaseBalance(address account, uint amount) external {
         _decreaseBalance(account, amount);
     }
 
     function testBeforeDeposit(address account, uint amount) external {
         _beforeDeposit(account, amount);
+    }
+
+    function testAfterDeposit(address account, uint amount) external {
+        _afterDeposit(account, amount);
     }
 
     function testPay(uint amount) external {
@@ -126,27 +139,7 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         );
     }
 
-    function testSubscribe(address account, uint planIdx, uint trial) external {
-        _subscribe(account, planIdx, trial);
-    }
-
-    function dummyCancel(address account, uint timestamp) external {
-        _writeUint(
-            uint(keccak256(abi.encode(account, SUBSCRIPTTIONS_SLOT))) + CANCELLED_AT_OFFSET_SLOT, 
-            timestamp
-        );
-    }
-
-    function dummyDeposit(address account, uint amount) external payable {
-        _writeUint(
-            uint(keccak256(abi.encode(account, BALANCES_SLOT))), 
-            amount
-        );
-    }
-
-    function _writeUint(uint slot, uint value) private {
-        assembly {
-            sstore(slot, value)
-        }
+    function dummyDeposit() external payable {
+        _increaseBalance(msg.sender, msg.value);
     }
 }

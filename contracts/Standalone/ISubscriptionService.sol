@@ -159,7 +159,7 @@ interface IStandaloneSubscriptionService {
      * @param account The address of the account
      * @return amount max(0, {balanceOf} - {reservedOf})
      */
-    function availableBalance(address account) external view returns (uint);
+    function availableBalanceOf(address account) external view returns (uint);
 
     /**
      * @dev throws if there's no subscription associated with the account
@@ -318,7 +318,7 @@ interface IStandaloneSubscriptionService {
      * Throws, if none of the specified accounts qualify for the charge
      * @param accounts The array of addresses of the accounts
      */
-    function charge(address[] calldata accounts) external;
+    function chargeMany(address[] calldata accounts) external;
 
     /**
      * @param planIdx The array's index of the required plan

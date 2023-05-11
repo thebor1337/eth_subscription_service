@@ -29,10 +29,10 @@ Adds a new plan
 | rate | uint256 | Amount of ETH to be charged per period. MUST be not 0 |
 | chargeDiscount | uint256 | The discount to be applied to the self-charge. MUST be in [0;100] |
 
-### availableBalance
+### availableBalanceOf
 
 ```solidity
-function availableBalance(address account) external view returns (uint256)
+function availableBalanceOf(address account) external view returns (uint256)
 ```
 
 
@@ -87,22 +87,6 @@ Cancels the current subscription
 ### charge
 
 ```solidity
-function charge(address[] accounts) external nonpayable
-```
-
-Charges a batch of accounts for all debt periods
-
-*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, the plan is inactive, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| accounts | address[] | The array of addresses of the accounts |
-
-### charge
-
-```solidity
 function charge(address account) external nonpayable
 ```
 
@@ -115,6 +99,22 @@ function charge(address account) external nonpayable
 | Name | Type | Description |
 |---|---|---|
 | account | address | The address of the account |
+
+### chargeMany
+
+```solidity
+function chargeMany(address[] accounts) external nonpayable
+```
+
+Charges a batch of accounts for all debt periods
+
+*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, the plan is inactive, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| accounts | address[] | The array of addresses of the accounts |
 
 ### closePlan
 

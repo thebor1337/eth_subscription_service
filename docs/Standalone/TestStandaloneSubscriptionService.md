@@ -29,10 +29,10 @@ Adds a new plan
 | rate | uint256 | Amount of ETH to be charged per period. MUST be not 0 |
 | chargeDiscount | uint256 | The discount to be applied to the self-charge. MUST be in [0;100] |
 
-### availableBalance
+### availableBalanceOf
 
 ```solidity
-function availableBalance(address account) external view returns (uint256)
+function availableBalanceOf(address account) external view returns (uint256)
 ```
 
 
@@ -87,22 +87,6 @@ Cancels the current subscription
 ### charge
 
 ```solidity
-function charge(address[] accounts) external nonpayable
-```
-
-Charges a batch of accounts for all debt periods
-
-*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, the plan is inactive, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| accounts | address[] | The array of addresses of the accounts |
-
-### charge
-
-```solidity
 function charge(address account) external nonpayable
 ```
 
@@ -115,6 +99,22 @@ function charge(address account) external nonpayable
 | Name | Type | Description |
 |---|---|---|
 | account | address | The address of the account |
+
+### chargeMany
+
+```solidity
+function chargeMany(address[] accounts) external nonpayable
+```
+
+Charges a batch of accounts for all debt periods
+
+*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, the plan is inactive, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| accounts | address[] | The array of addresses of the accounts |
 
 ### closePlan
 
@@ -159,39 +159,16 @@ function disablePlan(uint256 planIdx) external nonpayable
 |---|---|---|
 | planIdx | uint256 | undefined |
 
-### dummyCancel
-
-```solidity
-function dummyCancel(address account, uint256 timestamp) external nonpayable
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| account | address | undefined |
-| timestamp | uint256 | undefined |
-
 ### dummyDeposit
 
 ```solidity
-function dummyDeposit(address account, uint256 amount) external payable
+function dummyDeposit() external payable
 ```
 
 
 
 
 
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| account | address | undefined |
-| amount | uint256 | undefined |
 
 ### getPlan
 
@@ -416,6 +393,23 @@ function subscriptionOf(address account) external view returns (struct IStandalo
 |---|---|---|
 | _0 | IStandaloneSubscriptionService.Subscription | subscription {Subcription} object associated with the account |
 
+### testAfterDeposit
+
+```solidity
+function testAfterDeposit(address account, uint256 amount) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| amount | uint256 | undefined |
+
 ### testBeforeDeposit
 
 ```solidity
@@ -540,6 +534,24 @@ function testCalcFundedUntil(uint256 startedAt, uint256 chargedPeriods, uint256 
 |---|---|---|
 | _0 | uint256 | undefined |
 
+### testCancel
+
+```solidity
+function testCancel(address account, uint256 timestamp, uint256 planIdx) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| timestamp | uint256 | undefined |
+| planIdx | uint256 | undefined |
+
 ### testCancelled
 
 ```solidity
@@ -599,6 +611,23 @@ function testDecreaseBalance(address account, uint256 amount) external nonpayabl
 |---|---|---|
 | account | address | undefined |
 | amount | uint256 | undefined |
+
+### testIncreaseBalance
+
+```solidity
+function testIncreaseBalance(address account, uint256 value) external payable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| value | uint256 | undefined |
 
 ### testPay
 
@@ -660,10 +689,10 @@ function testPlanDisabled(uint256 planIdx) external view returns (bool)
 |---|---|---|
 | _0 | bool | undefined |
 
-### testSubscribe
+### testRestore
 
 ```solidity
-function testSubscribe(address account, uint256 planIdx, uint256 trial) external nonpayable
+function testRestore(address account, uint256 timestamp, uint256 planIdx) external nonpayable
 ```
 
 
@@ -675,6 +704,25 @@ function testSubscribe(address account, uint256 planIdx, uint256 trial) external
 | Name | Type | Description |
 |---|---|---|
 | account | address | undefined |
+| timestamp | uint256 | undefined |
+| planIdx | uint256 | undefined |
+
+### testSubscribe
+
+```solidity
+function testSubscribe(address account, uint256 timestamp, uint256 planIdx, uint256 trial) external nonpayable
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| account | address | undefined |
+| timestamp | uint256 | undefined |
 | planIdx | uint256 | undefined |
 | trial | uint256 | undefined |
 
