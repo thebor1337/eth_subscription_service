@@ -6,8 +6,6 @@ import { TestSubscriptionService } from "../typechain-types";
 
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
-// TODO больше тестов для калькуляции
-
 function getUtcTimestamp() {
     return Math.floor(Date.now() / 1000);
 }
