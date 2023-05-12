@@ -455,7 +455,7 @@ function testCalcCharge(uint256 periodsToCharge, uint256 discountPercent, uint25
 ### testCalcCountedPeriods
 
 ```solidity
-function testCalcCountedPeriods(uint256 startedAt, uint256 maxUntilAt, uint256 planDisabledAt, uint256 cancelledAt, uint256 period, bool countNext) external pure returns (uint256)
+function testCalcCountedPeriods(uint256 startedAt, uint256 maxUntilAt, uint256 planDisabledAt, uint256 cancelledAt, uint256 period) external pure returns (uint256)
 ```
 
 
@@ -471,7 +471,6 @@ function testCalcCountedPeriods(uint256 startedAt, uint256 maxUntilAt, uint256 p
 | planDisabledAt | uint256 | undefined |
 | cancelledAt | uint256 | undefined |
 | period | uint256 | undefined |
-| countNext | bool | undefined |
 
 #### Returns
 

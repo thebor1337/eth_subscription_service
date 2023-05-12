@@ -6,6 +6,8 @@ import { TestStandaloneSubscriptionService } from "../typechain-types";
 
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
+// TODO больше тестов для калькуляции
+
 function getUtcTimestamp() {
     return Math.floor(Date.now() / 1000);
 }
@@ -219,8 +221,7 @@ describe("StandaloneSubscriptionService", () => {
 
             describe("when subscription is not started", () => {
                 it("should be 0 (+1 if countNext)", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, startedAt - DAY, 0, 0, period, false)).to.equal(0);
-                    expect(await service.testCalcCountedPeriods(startedAt, startedAt - DAY, 0, 0, period, true)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, startedAt - DAY, 0, 0, period)).to.equal(0);
                 });
             });
 
@@ -228,18 +229,17 @@ describe("StandaloneSubscriptionService", () => {
                 const periodStartedAt = startedAt;
 
                 it("should be 1 when subscription's not interrupted (subscription not cancelled and plan not disabled)", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period, false)).to.equal(1);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period, true)).to.equal(2);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period)).to.equal(1);
                 });
 
                 it("should be 1 when subscription's interrupted in the current period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period, false)).to.equal(1);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period, false)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period)).to.equal(1);
                 });
 
                 it("should be 0 when subscription's interrupted the previous period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt - DAY, period, false)).to.equal(0);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt - DAY, 0, period, false)).to.equal(0);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt - DAY, period)).to.equal(0);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt - DAY, 0, period)).to.equal(0);
                 });
             });
 
@@ -247,20 +247,19 @@ describe("StandaloneSubscriptionService", () => {
                 const periodStartedAt = startedAt + period;
 
                 it("should be 2 when subscription's not interrupted", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period, false)).to.equal(2);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period, true)).to.equal(3);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period)).to.equal(2);
                 });
 
                 // TODO проверить когда maxUntilAt = periodStartedAt (без добавочных)
 
                 it("should be 2 when subscription's interrupted in the current period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, periodStartedAt + 3 * DAY, period, false)).to.equal(2);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, periodStartedAt + 3 * DAY, 0, period, false)).to.equal(2);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, periodStartedAt + 3 * DAY, period)).to.equal(2);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, periodStartedAt + 3 * DAY, 0, period)).to.equal(2);
                 });
 
                 it("should be 1 when subscription's interrupted in the previous period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period, false)).to.equal(1);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period, false)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period)).to.equal(1);
                 });
             });
         });

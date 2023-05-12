@@ -110,16 +110,14 @@ contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
         uint maxUntilAt,
         uint planDisabledAt,
         uint cancelledAt,
-        uint period,
-        bool countNext
+        uint period
     ) external pure returns(uint) {
         return _calcCountedPeriods(
             startedAt,
             maxUntilAt,
             planDisabledAt,
             cancelledAt,
-            period,
-            countNext
+            period
         );
     }
 

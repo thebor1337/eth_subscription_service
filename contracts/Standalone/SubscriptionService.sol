@@ -6,8 +6,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import "hardhat/console.sol";
-
 // ? subscription mining (чем позднее замайнил, тем меньше токенов получил)
 // ? может быть выдавать нфт, наличие которой = подписка?
 // ? персонализированная подписка (меньше рейт и тд)
@@ -17,11 +15,9 @@ import "hardhat/console.sol";
 // ? это нфт будет брать данные по истечению и тд с контракта-оператора
 // ? RentalNFT привязать к стандарту подписок
 
-// ! TODO проверить невозможность ситуации, когда кол-во chargedPeriods больше, чем finitePeriods
 // TODO актуализировать документацию
 // TODO поправить интерфейс (изменились функции)
 // TODO plan existing in external functions
-// TODO убрать console.log
 
 contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
     using Math for uint;
@@ -98,8 +94,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
                 block.timestamp,
                 plan.disabledAt, 
                 subscription.cancelledAt, 
-                period, 
-                false // TODO было true
+                period
             );
             return startedAt + maxCountedPeriods * period;
         }
@@ -131,8 +126,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             block.timestamp,
             plan.disabledAt, 
             subscription.cancelledAt, 
-            period, 
-            false
+            period
         );
 
         if (countedPeriods > subscription.chargedPeriods) return 0;
@@ -600,8 +594,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             maxUntilAt,
             planDisabledAt,
             cancelledAt,
-            period,
-            false
+            period
         );
 
         // Debt periods are 0 if there has been charged as many periods as have passed
@@ -626,15 +619,13 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
      * @param cancelledAt Timestamp at which the subscription was cancelled
      *        MUST be 0 if the subscription has not been cancelled
      * @param period Period of the plan
-     * @param countNext If true, rounds up the result (useful when need to include the next period)
      */
     function _calcCountedPeriods(
         uint startedAt,
         uint maxUntilAt,
         uint planDisabledAt,
         uint cancelledAt,
-        uint period,
-        bool countNext
+        uint period
     ) internal pure returns(uint) {
 
         // Calculates timestamp at which the subscription possibly ends
@@ -647,7 +638,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
 
         // Case when the subscription has not started yet (for example, the plan has a trial period)
-        if (untilAt < startedAt) return (countNext) ? 1 : 0;
+        if (untilAt < startedAt) return 0;
 
         uint timePassed;
         unchecked {
@@ -655,7 +646,6 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
             timePassed = untilAt - startedAt;
         }
 
-        if (countNext) return timePassed.ceilDiv(period) + 1;
         return (timePassed / period) + 1;
     }
 
