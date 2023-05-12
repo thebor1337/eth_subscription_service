@@ -45,8 +45,8 @@ contract SubscriptionService is ISubscriptionService, Ownable {
         if (!_subscribed(account)) return 0;
 
         Subscription storage subscription = _subscriptions[account];
-
         Plan storage plan = _plans[subscription.planIdx];
+
         uint rate = plan.rate;
 
         uint debtPeriods = _calcDebtPeriods(
@@ -76,7 +76,6 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     /// @inheritdoc ISubscriptionService
     function validUntil(address account) public view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
-
         uint planIdx = _subscriptions[account].planIdx;
         Plan storage plan = _plans[planIdx];
 

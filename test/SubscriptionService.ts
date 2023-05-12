@@ -186,6 +186,13 @@ describe("StandaloneSubscriptionService", () => {
                 ).to.be.revertedWithCustomError(service, "PlanNotExists");
             });
 
+            it("should revert when plan is disabled", async () => {
+                await service.disablePlan(0);
+                await expect(
+                    service.closePlan(0)
+                ).to.be.revertedWith("plan disabled");
+            });
+
             it("should revert when plan is already closed", async () => {
                 await service.closePlan(0);
                 await expect(
@@ -221,6 +228,13 @@ describe("StandaloneSubscriptionService", () => {
                 await expect(
                     service.openPlan(1)
                 ).to.be.revertedWithCustomError(service, "PlanNotExists");
+            });
+
+            it("should revert when plan is disabled", async () => {
+                await service.disablePlan(0);
+                await expect(
+                    service.openPlan(0)
+                ).to.be.revertedWith("plan disabled");
             });
 
             it("should revert when plan is already open", async () => {
@@ -893,21 +907,21 @@ describe("StandaloneSubscriptionService", () => {
                         });
                     });
 
-                    // describe("cancelled", () => {
-                    //     it("should subscribe", async () => {
-                    //         await service.dummyCancel(user1.address, getUtcTimestamp() - 10);
-                    //         const timestamp = getUtcTimestamp() + 10;
+                    describe("cancelled", () => {
+                        it("should subscribe", async () => {
+                            await service.connect(account).cancel();
+                            const timestamp = getUtcTimestamp() + 10;
     
-                    //         await time.setNextBlockTimestamp(timestamp);
-                    //         await service.connect(user1).subscribe(1);
+                            await time.setNextBlockTimestamp(timestamp);
+                            await service.connect(user1).subscribe(1);
     
-                    //         const subscription = await service.subscriptionOf(user1.address);
-                    //         expect(subscription.planIdx).to.equal(1);
-                    //         expect(subscription.createdAt).to.equal(timestamp);
-                    //         expect(subscription.startedAt).to.equal(timestamp);
-                    //         expect(subscription.cancelledAt).to.equal(0);
-                    //     });
-                    // });
+                            const subscription = await service.subscriptionOf(user1.address);
+                            expect(subscription.planIdx).to.equal(1);
+                            expect(subscription.createdAt).to.equal(timestamp);
+                            expect(subscription.startedAt).to.equal(timestamp);
+                            expect(subscription.cancelledAt).to.equal(0);
+                        });
+                    });
                 });
             });
         });
@@ -1068,7 +1082,7 @@ describe("StandaloneSubscriptionService", () => {
             });
         });
 
-        describe("charge[]", () => {
+        describe("chargeMany()", () => {
             const period = DAY;
             const rate = 30;
             
@@ -1095,6 +1109,20 @@ describe("StandaloneSubscriptionService", () => {
                 await expect(service.chargeMany([user1.address, user2.address]))
                 .to.emit(service, "Charged")
                 .withArgs(user1.address, owner.address, 0, 1, rate)
+            });
+
+            it("should charge all accounts if all uncharged", async () => {
+                await service.connect(user1).dummyDeposit({value: 100});
+                await service.connect(user1).subscribe(0);
+
+                await service.connect(user2).dummyDeposit({value: 100});
+                await service.connect(user2).subscribe(0);
+
+                await time.increase(period + 10);
+
+                const tx = await service.chargeMany([user1.address, user2.address]);
+                await expect(tx).to.emit(service, "Charged").withArgs(user1.address, owner.address, 0, 1, rate);
+                await expect(tx).to.emit(service, "Charged").withArgs(user2.address, owner.address, 0, 1, rate);
             });
         });
 
