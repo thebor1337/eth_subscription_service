@@ -1,8 +1,10 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-// TODO пометить что throws (какие кастомные ошибки)
-
+/**
+ * @notice Subscription service
+ * @author thebor1337
+ */
 interface ISubscriptionService {
 
     /**
