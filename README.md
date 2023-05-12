@@ -24,19 +24,19 @@ Should the contract owner handle this responsibility? Here are a few reasons why
 
 This project introduces a combined method, designed primarily for educational purposes. While it's possible that similar implementations or accepted standards already exist, my focus remains on exploring the subject matter.
 
-###### **Algorithm Example**
+###### Algorithm Example**
 
 Users can add funds to their contract balance, which will be utilized for regular charges related to their subscriptions. Subsequently, users can initiate a subscription by selecting one of the plans created by the contract owner. Upon subscription registration, users are charged for the first month. At the end of each period, the system automatically verifies the availability of sufficient ETH balance to cover the subsequent period, ensuring uninterrupted subscription services.
 
 To prevent abuse, users are restricted from withdrawing funds from the balance that have already been allocated to cover subscription expenses, even if the funds haven't physically left the balance.
 
-###### **Contract Owner Flexibility**
+###### Contract Owner Flexibility
 
 Contract owner is no longer obligated to charge users at specific times; instead, an owner has the freedom to do so at their discretion. For instance, owners may choose to charge when a substantial amount has accumulated, minimizing gas fees in comparison. Furthermore, owners can exercise this right even if users haven't renewed their subscriptions for several periods.
 
 ###### User Involvement and Incentives
 
-Subscription users also have the option to initiate a charge. Contract owners can incentivize users by offering payment discounts when they perform charges themselves. This financial incentive encourages user participation and addresses the issue of stagnant funds on the contract balance.**
+Subscription users also have the option to initiate a charge. Contract owners can incentivize users by offering payment discounts when they perform charges themselves. This financial incentive encourages user participation and addresses the issue of stagnant funds on the contract balance.
 
 ---
 
