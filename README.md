@@ -40,4 +40,14 @@ Subscription users also have the option to initiate a charge. Contract owners ca
 
 ---
 
-For comprehensive functionality details, please refer to the "docs/SubscriptionService.sol" file or check the contract and its NatSpec comments.
+For comprehensive functionality details, please refer to the "docs/SubscriptionService.md" file or check the contract and its NatSpec comments.
+
+# Tests
+
+`npm install`
+
+`npx hardhat test`
+
+---
+
+Feel free to contribute and fix issues, let's make blockchain great
