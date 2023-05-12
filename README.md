@@ -40,4 +40,4 @@ Subscription users also have the option to initiate a charge. Contract owners ca
 
 ---
 
-For comprehensive functionality details, please refer to the "docs/SubscriptionService.sol" file or check the contract and its NatSpec comments .
+For comprehensive functionality details, please refer to the "docs/SubscriptionService.sol" file or check the contract and its NatSpec comments.
