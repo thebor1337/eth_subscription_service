@@ -138,37 +138,47 @@ interface ISubscriptionService {
     error NotSubscribed();
     error NotCancelled();
     error AlreadyCancelled();
-    error PlanUnavailable();
     error NothingToCharge();
+    error PlanUnavailable();
+    error PlanNotExists();
 
     /**
+     * @notice Get the current amount of ETH of the {account}
+     * @dev Calculates as {deposited amount} - {withdrawn amount}
      * @param account The address of the account
-     * @return amount The balance of the account
+     * @return uint The balance of the account
      */
     function balanceOf(address account) external view returns (uint);
 
     /**
-     * @dev The reserved amount is the amount that is reserved to pay for debt periods,
-     * or to pay for the current (already started) period
+     * @notice Get amount of ETH that is reserved for further charging
+     * @dev The reserved amount is the amount that is reserved to pay for uncharged (debt) periods.
+     * In other words, it's the amount that can't be withdrawn from the contract anymore.
+     * Only the contract's owner can withdraw it after charging the account.
      * @param account The address of the account
-     * @return amount The reserved amount of the account
+     * @return uint The reserved amount of the account
      */
     function reservedOf(address account) external view returns (uint);
 
     /**
+     * @notice Get the amount of ETH that is available and not reserved for further charging
+     * @dev Can be used as max amount that is available for withdrawal.
+     * Calculates by formula: max(0, {balanceOf} - {reservedOf})
      * @param account The address of the account
-     * @return amount max(0, {balanceOf} - {reservedOf})
+     * @return uint The available balance of the account
      */
     function availableBalanceOf(address account) external view returns (uint);
 
     /**
+     * @notice Get full subscription data associated with the {account}
      * @dev throws if there's no subscription associated with the account
      * @param account The address of the account
-     * @return subscription {Subcription} object associated with the account
+     * @return Subscrition data object associated with the account
      */
     function subscriptionOf(address account) external view returns (Subscription memory);
 
     /**
+     * @notice Whether the {account}'s subscription is valid (can be considered as active)
      * @dev A subscription is considered valid if:
      * - all used periods are charged (including the current)
      * - there is enough ETH on the balance to charge for all used periods (including the current)
@@ -181,67 +191,84 @@ interface ISubscriptionService {
      *
      * Throws, if there's no subscription associated with the account
      * @param account The address of the account
-     * @return isValid Whether the subscription is valid
+     * @return bool Whether the subscription is valid
      */
     function isValid(address account) external view returns (bool);
 
     /**
-     * @dev Throws if there's no subscription associated with the account
+     * @notice Get timestamp until which the subscription will be considered valid
+     * @dev Can be used to check when the subscription will expire
+     * Can be in the past, if the subscription is not valid anymore
+     * Throws if there's no subscription associated with the account
      * @param account The address of the account
-     * @return validUntil The timestamp until which the subscription will be considered valid
+     * @return uint The timestamp until which the subscription will be considered valid
      */
     function validUntil(address account) external view returns (uint);
 
     /** 
+     * @notice Returns the timestamp at which the next charge will be available
      * @dev Throws if there's no subscription associated with the account
      * @param account The address of the account
-     * @return nextAvailableChargeAt If there is a debt, returns 0. Otherwise, returns the timestamp at which the next charge will be available
+     * @return uint The timestamp at which the next charge will be available (0, if already available)
     */
     function nextAvailableChargeAt(address account) external view returns (uint);
     
     /**
+     * @notice Calculates the charge data
+     * @dev Calculates the charge data for the account based on the current state of the subscription and the plan.
+     * @param account Address of the account
+     * @param makeDiscount Whether to apply discount
+     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
+     * @return periodsToCharge Total number of periods to charge
+     * @return rate Rate to charge for the period (taking into account the discount)
+     */
+    function previewCharge(address account, bool makeDiscount) external view returns(
+        uint amountToCharge, 
+        uint periodsToCharge,
+        uint rate
+    );
+
+    /**
      * @notice Deposit ETH to the contract and add it to the balance of the sender.
      * @dev Calling this function also adds the following functionality: 
      * if there is an inactive subscription due to insufficient balance, 
-     * the subscription will be restored if the deposit amount permits to pay for a new subscription period. 
-     * No action will be taken if the subscription has been canceled or the associated plan has been disabled.
+     * the subscription will be restored if the deposited amount permits to pay for a new subscription period. 
+     * No action, except depositing to the balance, will be taken if the subscription has been canceled or the associated plan has been disabled.
      *
-     * Emits an {Deposited} event always
+     * Emits an {Deposited} event
      * Emits an {Restored} event if the subscription is restored
      */
     function deposit() external payable;
     
     /**
-     * @notice Withdraw ETH from the contract and subtract it from the balance of the sender.
+     * @notice Withdraw ETH from the contract.
      * @dev Withdraws {amount} ETH from the contract if {reservedOf} is less than {amount}. 
-     * As a result, the user cannot withdraw money that is reserved to pay for debt periods, 
-     * or to pay for the current (already started) period
+     * As a result, the user cannot withdraw ETH that is reserved to pay for uncharged periods
      *
      * Throws, if it's impossible to withdraw the specified amount
+     * Emits an {Withdrawn} event
      * @param amount The amount of ETH to withdraw
      */
     function withdraw(uint amount) external;
 
     /**
-     * @notice Subscribes to the plan with the specified index in the plans array
+     * @notice Subscribes to the plan at the specified index in the plans array
      * @dev Subscribes to the specified plan if all of the following conditions are met:
-     * - No active (not canceled) subscription
-     * - If there is an active subscription, but the plan associated with that subscription is no longer active
-     * - If the specified plan is not disabled
-     * - If the specified plan is open
-     * - If the subscription has a trial period, the account has enough ETH to charge the first period after the trial period expires
-     * - If the subscription does not have a trial period, the account has enough ETH to charge the first period
+     * 1) No active subscription (means there's no subscription at all, or the previous subscription must be cancelled first). 
+     * If there is an active subscription, it must be cancelled first.
+     * 3) If the specified plan is not disabled
+     * 4) If the specified plan is open
+     * 5) If the subscription has a trial period, the account has enough ETH to charge the first period after the trial period expires
+     * 6) If the subscription does not have a trial period, the account has enough ETH to charge the first period
      *
      * In case of a successful subscription, the data on the previous subscription is erased. 
      * If the plan does not have a trial period, it charges the first period instantly without a self-charge discount.
      *
      * Emits {Subscribed} event, if the function finished without revert
-     * Emits {Cancelled} event, if there was an active subscription with an inactive plan associated with it
      * Emits {Charged} event, if a charge was made (if there's no trial period)
      *
      * Throws, if the specified plan is not active or not open anymore
-     * Throws, if there's already an active subscription associated with the account, 
-     *         the subscription is not cancelled and the associated plan is still active
+     * Throws, if there's already an active subscription associated with the account
      * @param planIdx The array's index of the required plan
      */
     function subscribe(uint planIdx) external;
@@ -262,54 +289,52 @@ interface ISubscriptionService {
      * @notice Restores the current subscription
      * @dev Restores the current subscription if all of the following conditions are met:
      * - The subscription was cancelled before
-     * - The plan associated with the subscription is still active
-     * - The account has enough ETH to charge for the *first* period
+     * - The plan associated with the subscription is still not disabled
+     * - The account has enough ETH to charge for the first period
      *
      * Emits {Restored} event, if the function finished without revert
-     * Emits {Charged} event, it was successfully charged for the *first* period
+     * Emits {Charged} event, it was successfully charged for the first period
      *
      * Throws, if there's no subscription associated with the account
      * Throws, if the subscription has not been canceled before
      * Throws, if the plan associated with the subscription is no longer active
-     * Throws, if the account does not have enough ETH to charge for the *first* period
+     * Throws, if the account does not have enough ETH to charge for the first period
      *
      * P.S. - The first period is a period after the subscription was restored
      */
     function restore() external;
 
     /**
-     * @dev Charges for all debt periods. 
-     * If the function was called by the owner of the subscription, the charge is executed using the discount specified by the associated plan.
-     *
-     * Debt periods - periods when the subscription is/was active. The calculation takes into account the following factors:
-     * - State of account's balance. 
+     * @notice Charges for all uncharged periods
+     * @dev If the function was called by the owner of the subscription, the charge is executed using the discount specified by the associated plan.
+     * Uncharged periods - periods when the subscription considered as active. The calculation takes into account the following factors:
+     * 1) State of account's balance. 
      *   If the balance is only enough for {N} periods, 
      *   the subscription will be active only for these N periods. 
-     *   If {M} of these periods have already been charged, then {debt period = N - M}
-     * - State of the subscription. 
+     *   If {M} of these periods have already been charged, then {uncharged periods = N - M}
+     * 2) State of the subscription. 
      *   If the subscription has been cancelled, 
-     *   only those periods prior to the time of cancellation count toward debt periods. 
+     *   only those periods prior to the time of cancellation count toward uncharged periods. 
      *   For example, if the plan's period is 1 month, and the subscription was canceled after 6 weeks, 
-     *   then {debt periods = 2} (for 2 full months, since even if the subscription is canceled not at the end of its expiration, 
-     *   the user can continue with it use to the end)
-     * - State of the plan. 
+     *   then {uncharged periods = 2} (for 2 full months, since even if the subscription is canceled not at the end of its expiration, 
+     *   the user can continue to use it until the expiration timestamp)
+     * 3) State of the plan. 
      *   If the plan has been disabled, the subscription will expire automatically 
-     *   from the end of the period following the time at which the plan was disabled (same as in case of subscription's cancellation)
+     *   starting from the end of the period following the timestamp at which the plan was disabled (same as in case of subscription's cancellation)
      *
-     * Emits {Charged} event, if the function finished without revert
+     * Emits {Charged} event
      *
      * Throws, if there's no subscription associated with the account
-     * Throws, if there's no debt periods to charge
-     * Throws, if the account does not have enough ETH to charge
+     * Throws, if there's no uncharged periods
      * @param account The address of the account
      */
     function charge(address account) external;
 
     /**
-     * @notice Charges a batch of accounts for all debt periods
+     * @notice Charges a batch of accounts for all uncharged periods
      * @dev Do the same as charge(address), but handles a batch of accounts. Can be used to save gas.
      * If any of the specified addresses does not fulfill the conditions of the charge 
-     * (not subscribed, the plan is inactive, does not have enough funds, etc.), 
+     * (not subscribed, does not have enough funds, etc.), 
      * the function will not throw, it will skip all non-compliant accounts. 
      * However, if none of the listed accounts qualify, it throws.
      *
@@ -321,23 +346,24 @@ interface ISubscriptionService {
     function chargeMany(address[] calldata accounts) external;
 
     /**
+     * @notice Gets the plan at the specified index
      * @param planIdx The array's index of the required plan
-     * @return plan {Plan} object of associated with the index in the plans array
+     * @return Plan The plan's data
      */
     function getPlan(uint planIdx) external view returns (Plan memory);
 
     /**
      * @notice Adds a new plan
-     * @dev Adds a new plan to the plans array.
+     * @dev Pushes a new plan object to the plans array.
      * 
      * Emits {PlanAdded} event
      *
      * Throws, if some of the parameters are not valid
      *
-     * @param period The period of the plan in seconds. MUST be not 0
+     * @param period The period of the plan in seconds. MUST be NOT 0
      * @param trial The trial period of the plan in seconds. 0, if the plan does not have a trial period
-     * @param rate Amount of ETH to be charged per period. MUST be not 0
-     * @param chargeDiscount The discount to be applied to the self-charge. MUST be in [0;100]
+     * @param rate Amount of ETH to be charged per period. MUST be NOT 0
+     * @param chargeDiscount The discount to be applied to the self-charge. MUST be IN [0;100]
      */
     function addPlan(
         uint period,

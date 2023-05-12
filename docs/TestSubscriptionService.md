@@ -18,16 +18,16 @@ function addPlan(uint256 period, uint256 trial, uint256 rate, uint256 chargeDisc
 
 Adds a new plan
 
-*Adds a new plan to the plans array.  Emits {PlanAdded} event Throws, if some of the parameters are not valid*
+*Pushes a new plan object to the plans array.  Emits {PlanAdded} event Throws, if some of the parameters are not valid*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| period | uint256 | The period of the plan in seconds. MUST be not 0 |
+| period | uint256 | The period of the plan in seconds. MUST be NOT 0 |
 | trial | uint256 | The trial period of the plan in seconds. 0, if the plan does not have a trial period |
-| rate | uint256 | Amount of ETH to be charged per period. MUST be not 0 |
-| chargeDiscount | uint256 | The discount to be applied to the self-charge. MUST be in [0;100] |
+| rate | uint256 | Amount of ETH to be charged per period. MUST be NOT 0 |
+| chargeDiscount | uint256 | The discount to be applied to the self-charge. MUST be IN [0;100] |
 
 ### availableBalanceOf
 
@@ -35,9 +35,9 @@ Adds a new plan
 function availableBalanceOf(address account) external view returns (uint256)
 ```
 
+Get the amount of ETH that is available and not reserved for further charging
 
-
-
+*Can be used as max amount that is available for withdrawal. Calculates by formula: max(0, {balanceOf} - {reservedOf})*
 
 #### Parameters
 
@@ -49,7 +49,7 @@ function availableBalanceOf(address account) external view returns (uint256)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | uint256 | amount max(0, {balanceOf} - {reservedOf}) |
+| _0 | uint256 | uint The available balance of the account |
 
 ### balanceOf
 
@@ -57,9 +57,9 @@ function availableBalanceOf(address account) external view returns (uint256)
 function balanceOf(address account) external view returns (uint256)
 ```
 
+Get the current amount of ETH of the {account}
 
-
-
+*Calculates as {deposited amount} - {withdrawn amount}*
 
 #### Parameters
 
@@ -71,7 +71,7 @@ function balanceOf(address account) external view returns (uint256)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | uint256 | amount The balance of the account |
+| _0 | uint256 | uint The balance of the account |
 
 ### cancel
 
@@ -90,9 +90,9 @@ Cancels the current subscription
 function charge(address account) external nonpayable
 ```
 
+Charges for all uncharged periods
 
-
-*Charges for all debt periods.  If the function was called by the owner of the subscription, the charge is executed using the discount specified by the associated plan. Debt periods - periods when the subscription is/was active. The calculation takes into account the following factors: - State of account&#39;s balance.    If the balance is only enough for {N} periods,    the subscription will be active only for these N periods.    If {M} of these periods have already been charged, then {debt period = N - M} - State of the subscription.    If the subscription has been cancelled,    only those periods prior to the time of cancellation count toward debt periods.    For example, if the plan&#39;s period is 1 month, and the subscription was canceled after 6 weeks,    then {debt periods = 2} (for 2 full months, since even if the subscription is canceled not at the end of its expiration,    the user can continue with it use to the end) - State of the plan.    If the plan has been disabled, the subscription will expire automatically    from the end of the period following the time at which the plan was disabled (same as in case of subscription&#39;s cancellation) Emits {Charged} event, if the function finished without revert Throws, if there&#39;s no subscription associated with the account Throws, if there&#39;s no debt periods to charge Throws, if the account does not have enough ETH to charge*
+*If the function was called by the owner of the subscription, the charge is executed using the discount specified by the associated plan. Uncharged periods - periods when the subscription considered as active. The calculation takes into account the following factors: 1) State of account&#39;s balance.    If the balance is only enough for {N} periods,    the subscription will be active only for these N periods.    If {M} of these periods have already been charged, then {uncharged periods = N - M} 2) State of the subscription.    If the subscription has been cancelled,    only those periods prior to the time of cancellation count toward uncharged periods.    For example, if the plan&#39;s period is 1 month, and the subscription was canceled after 6 weeks,    then {uncharged periods = 2} (for 2 full months, since even if the subscription is canceled not at the end of its expiration,    the user can continue to use it until the expiration timestamp) 3) State of the plan.    If the plan has been disabled, the subscription will expire automatically    starting from the end of the period following the timestamp at which the plan was disabled (same as in case of subscription&#39;s cancellation) Emits {Charged} event Throws, if there&#39;s no subscription associated with the account Throws, if there&#39;s no uncharged periods*
 
 #### Parameters
 
@@ -106,9 +106,9 @@ function charge(address account) external nonpayable
 function chargeMany(address[] accounts) external nonpayable
 ```
 
-Charges a batch of accounts for all debt periods
+Charges a batch of accounts for all uncharged periods
 
-*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, the plan is inactive, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
+*Do the same as charge(address), but handles a batch of accounts. Can be used to save gas. If any of the specified addresses does not fulfill the conditions of the charge  (not subscribed, does not have enough funds, etc.),  the function will not throw, it will skip all non-compliant accounts.  However, if none of the listed accounts qualify, it throws. Emits {Charged} event for all accounts that has been charged successfully Throws, if none of the specified accounts qualify for the charge*
 
 #### Parameters
 
@@ -122,15 +122,15 @@ Charges a batch of accounts for all debt periods
 function closePlan(uint256 planIdx) external nonpayable
 ```
 
+Closes the plan
 
-
-*See {ISubscriptionService-closePlan}*
+*Closes the plan at {planIdx} in plans array. Emits {PlanClosed} event  Throws, if the plan has been disabled Throws, if the plan has already been closed*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| planIdx | uint256 | undefined |
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### deposit
 
@@ -140,7 +140,7 @@ function deposit() external payable
 
 Deposit ETH to the contract and add it to the balance of the sender.
 
-*Calling this function also adds the following functionality:  if there is an inactive subscription due to insufficient balance,  the subscription will be restored if the deposit amount permits to pay for a new subscription period.  No action will be taken if the subscription has been canceled or the associated plan has been disabled. Emits an {Deposited} event always Emits an {Restored} event if the subscription is restored*
+*Calling this function also adds the following functionality:  if there is an inactive subscription due to insufficient balance,  the subscription will be restored if the deposited amount permits to pay for a new subscription period.  No action, except depositing to the balance, will be taken if the subscription has been canceled or the associated plan has been disabled. Emits an {Deposited} event Emits an {Restored} event if the subscription is restored*
 
 
 ### disablePlan
@@ -149,15 +149,15 @@ Deposit ETH to the contract and add it to the balance of the sender.
 function disablePlan(uint256 planIdx) external nonpayable
 ```
 
+Disables the plan
 
-
-*See {ISubscriptionService-disablePlan}*
+*Disables the plan at {planIdx} in plans array.   Emits {PlanDisabled} event Throws, if the plan has already been disabled*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| planIdx | uint256 | undefined |
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### dummyDeposit
 
@@ -176,7 +176,7 @@ function dummyDeposit() external payable
 function getPlan(uint256 planIdx) external view returns (struct ISubscriptionService.Plan)
 ```
 
-
+Gets the plan at the specified index
 
 
 
@@ -190,7 +190,7 @@ function getPlan(uint256 planIdx) external view returns (struct ISubscriptionSer
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | ISubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
+| _0 | ISubscriptionService.Plan | Plan The plan&#39;s data |
 
 ### isValid
 
@@ -198,7 +198,7 @@ function getPlan(uint256 planIdx) external view returns (struct ISubscriptionSer
 function isValid(address account) external view returns (bool)
 ```
 
-
+Whether the {account}&#39;s subscription is valid (can be considered as active)
 
 *A subscription is considered valid if: - all used periods are charged (including the current) - there is enough ETH on the balance to charge for all used periods (including the current) A subscription is not considered valid if none of the validity conditions are met, or: - the subscription has been canceled - the plan linked to the subscription has been disabled. If one of the invalidation conditions is met, the subscription is still considered valid until the last valid period has expired Throws, if there&#39;s no subscription associated with the account*
 
@@ -212,7 +212,7 @@ function isValid(address account) external view returns (bool)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | bool | isValid Whether the subscription is valid |
+| _0 | bool | bool Whether the subscription is valid |
 
 ### nextAvailableChargeAt
 
@@ -220,7 +220,7 @@ function isValid(address account) external view returns (bool)
 function nextAvailableChargeAt(address account) external view returns (uint256)
 ```
 
-
+Returns the timestamp at which the next charge will be available
 
 *Throws if there&#39;s no subscription associated with the account*
 
@@ -234,7 +234,7 @@ function nextAvailableChargeAt(address account) external view returns (uint256)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | uint256 | nextAvailableChargeAt If there is a debt, returns 0. Otherwise, returns the timestamp at which the next charge will be available |
+| _0 | uint256 | uint The timestamp at which the next charge will be available (0, if already available) |
 
 ### openPlan
 
@@ -242,15 +242,15 @@ function nextAvailableChargeAt(address account) external view returns (uint256)
 function openPlan(uint256 planIdx) external nonpayable
 ```
 
+Opens the plan
 
-
-*See {ISubscriptionService-openPlan}*
+*Opens the plan at {planIdx} in plans array.  Emits {PlanOpened} event  Throws, if the plan has been disabled Throws, if the plan has not been closed*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| planIdx | uint256 | undefined |
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### owner
 
@@ -292,9 +292,9 @@ function paidAmount() external view returns (uint256)
 function previewCharge(address account, bool makeDiscount) external view returns (uint256 amountToCharge, uint256 periodsToCharge, uint256 rate)
 ```
 
+Calculates the charge data
 
-
-
+*Calculates the charge data for the account based on the current state of the subscription and the plan.*
 
 #### Parameters
 
@@ -309,7 +309,7 @@ function previewCharge(address account, bool makeDiscount) external view returns
 |---|---|---|
 | amountToCharge | uint256 | Total ETH amount to charge for all considered periods (taking into account the discount) |
 | periodsToCharge | uint256 | Total number of periods to charge |
-| rate | uint256 | Rate to charge for the period |
+| rate | uint256 | Rate to charge for the period (taking into account the discount) |
 
 ### renounceOwnership
 
@@ -328,9 +328,9 @@ function renounceOwnership() external nonpayable
 function reservedOf(address account) external view returns (uint256)
 ```
 
+Get amount of ETH that is reserved for further charging
 
-
-*The reserved amount is the amount that is reserved to pay for debt periods, or to pay for the current (already started) period*
+*The reserved amount is the amount that is reserved to pay for uncharged (debt) periods. In other words, it&#39;s the amount that can&#39;t be withdrawn from the contract anymore. Only the contract&#39;s owner can withdraw it after charging the account.*
 
 #### Parameters
 
@@ -342,7 +342,7 @@ function reservedOf(address account) external view returns (uint256)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | uint256 | amount The reserved amount of the account |
+| _0 | uint256 | uint The reserved amount of the account |
 
 ### restore
 
@@ -352,7 +352,7 @@ function restore() external nonpayable
 
 Restores the current subscription
 
-*Restores the current subscription if all of the following conditions are met: - The subscription was cancelled before - The plan associated with the subscription is still active - The account has enough ETH to charge for the *first* period Emits {Restored} event, if the function finished without revert Emits {Charged} event, it was successfully charged for the *first* period Throws, if there&#39;s no subscription associated with the account Throws, if the subscription has not been canceled before Throws, if the plan associated with the subscription is no longer active Throws, if the account does not have enough ETH to charge for the *first* period P.S. - The first period is a period after the subscription was restored*
+*Restores the current subscription if all of the following conditions are met: - The subscription was cancelled before - The plan associated with the subscription is still not disabled - The account has enough ETH to charge for the first period Emits {Restored} event, if the function finished without revert Emits {Charged} event, it was successfully charged for the first period Throws, if there&#39;s no subscription associated with the account Throws, if the subscription has not been canceled before Throws, if the plan associated with the subscription is no longer active Throws, if the account does not have enough ETH to charge for the first period P.S. - The first period is a period after the subscription was restored*
 
 
 ### subscribe
@@ -361,9 +361,9 @@ Restores the current subscription
 function subscribe(uint256 planIdx) external nonpayable
 ```
 
-Subscribes to the plan with the specified index in the plans array
+Subscribes to the plan at the specified index in the plans array
 
-*Subscribes to the specified plan if all of the following conditions are met: - No active (not canceled) subscription - If there is an active subscription, but the plan associated with that subscription is no longer active - If the specified plan is not disabled - If the specified plan is open - If the subscription has a trial period, the account has enough ETH to charge the first period after the trial period expires - If the subscription does not have a trial period, the account has enough ETH to charge the first period In case of a successful subscription, the data on the previous subscription is erased.  If the plan does not have a trial period, it charges the first period instantly without a self-charge discount. Emits {Subscribed} event, if the function finished without revert Emits {Cancelled} event, if there was an active subscription with an inactive plan associated with it Emits {Charged} event, if a charge was made (if there&#39;s no trial period) Throws, if the specified plan is not active or not open anymore Throws, if there&#39;s already an active subscription associated with the account,          the subscription is not cancelled and the associated plan is still active*
+*Subscribes to the specified plan if all of the following conditions are met: 1) No active subscription (means there&#39;s no subscription at all, or the previous subscription must be cancelled first).  If there is an active subscription, it must be cancelled first. 3) If the specified plan is not disabled 4) If the specified plan is open 5) If the subscription has a trial period, the account has enough ETH to charge the first period after the trial period expires 6) If the subscription does not have a trial period, the account has enough ETH to charge the first period In case of a successful subscription, the data on the previous subscription is erased.  If the plan does not have a trial period, it charges the first period instantly without a self-charge discount. Emits {Subscribed} event, if the function finished without revert Emits {Charged} event, if a charge was made (if there&#39;s no trial period) Throws, if the specified plan is not active or not open anymore Throws, if there&#39;s already an active subscription associated with the account*
 
 #### Parameters
 
@@ -377,7 +377,7 @@ Subscribes to the plan with the specified index in the plans array
 function subscriptionOf(address account) external view returns (struct ISubscriptionService.Subscription)
 ```
 
-
+Get full subscription data associated with the {account}
 
 *throws if there&#39;s no subscription associated with the account*
 
@@ -391,7 +391,7 @@ function subscriptionOf(address account) external view returns (struct ISubscrip
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | ISubscriptionService.Subscription | subscription {Subcription} object associated with the account |
+| _0 | ISubscriptionService.Subscription | Subscrition data object associated with the account |
 
 ### testAfterDeposit
 
@@ -688,6 +688,28 @@ function testPlanDisabled(uint256 planIdx) external view returns (bool)
 |---|---|---|
 | _0 | bool | undefined |
 
+### testPlanExists
+
+```solidity
+function testPlanExists(uint256 planIdx) external view returns (bool)
+```
+
+
+
+
+
+#### Parameters
+
+| Name | Type | Description |
+|---|---|---|
+| planIdx | uint256 | undefined |
+
+#### Returns
+
+| Name | Type | Description |
+|---|---|---|
+| _0 | bool | undefined |
+
 ### testRestore
 
 ```solidity
@@ -786,9 +808,9 @@ function transferOwnership(address newOwner) external nonpayable
 function validUntil(address account) external view returns (uint256)
 ```
 
+Get timestamp until which the subscription will be considered valid
 
-
-*Throws if there&#39;s no subscription associated with the account*
+*Can be used to check when the subscription will expire Can be in the past, if the subscription is not valid anymore Throws if there&#39;s no subscription associated with the account*
 
 #### Parameters
 
@@ -800,7 +822,7 @@ function validUntil(address account) external view returns (uint256)
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | uint256 | validUntil The timestamp until which the subscription will be considered valid |
+| _0 | uint256 | uint The timestamp until which the subscription will be considered valid |
 
 ### withdraw
 
@@ -808,9 +830,9 @@ function validUntil(address account) external view returns (uint256)
 function withdraw(uint256 amount) external nonpayable
 ```
 
-Withdraw ETH from the contract and subtract it from the balance of the sender.
+Withdraw ETH from the contract.
 
-*Withdraws {amount} ETH from the contract if {reservedOf} is less than {amount}.  As a result, the user cannot withdraw money that is reserved to pay for debt periods,  or to pay for the current (already started) period Throws, if it&#39;s impossible to withdraw the specified amount*
+*Withdraws {amount} ETH from the contract if {reservedOf} is less than {amount}.  As a result, the user cannot withdraw ETH that is reserved to pay for uncharged periods Throws, if it&#39;s impossible to withdraw the specified amount Emits an {Withdrawn} event*
 
 #### Parameters
 
@@ -824,15 +846,15 @@ Withdraw ETH from the contract and subtract it from the balance of the sender.
 function withdrawPayments(address receiver) external nonpayable
 ```
 
+Withdraws an allowed part of the contract&#39;s balance to the {receiver}
 
-
-
+*Makes a transfer to the {receiver} of all amount specified at &#39;paidAmount&#39; state variable. that contains the amount of ETH that was paid by users while charging. Throws if the {receiver} is the zero address Throws if there&#39;s nothing to withdraw Throws if the transfer failed     *
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| receiver | address | undefined |
+| receiver | address | The address of the receiver |
 
 
 
@@ -1110,6 +1132,17 @@ error NotSubscribed()
 
 ```solidity
 error NothingToCharge()
+```
+
+
+
+
+
+
+### PlanNotExists
+
+```solidity
+error PlanNotExists()
 ```
 
 

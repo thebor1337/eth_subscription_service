@@ -6,18 +6,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-// ? subscription mining (чем позднее замайнил, тем меньше токенов получил)
-// ? может быть выдавать нфт, наличие которой = подписка?
-// ? персонализированная подписка (меньше рейт и тд)
-// ? подарочные подписки (через нфт)
-// ? севрис подписок (вместо одного контракта, через какой-то прокси который содержит в себе общий баланс, занесенный на сервер) + возможность интеграции с существующими проектами
-// ? нфт как подписка, в ней указывается оператор (контракт, обрабатывающий подписку) и может использолваться где угодно + коллбеки (посмотреть как устроены нфт на hyphen, где на ней были указаны динамические проценты)
-// ? это нфт будет брать данные по истечению и тд с контракта-оператора
-// ? RentalNFT привязать к стандарту подписок
-
-// TODO актуализировать документацию
-// TODO поправить интерфейс (изменились функции)
-// TODO plan existing in external functions
 
 contract SubscriptionService is ISubscriptionService, Ownable {
     using Math for uint;
@@ -31,6 +19,13 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     modifier mustBeSubscribed(address account) {
         if (!_subscribed(account)) {
             revert NotSubscribed();
+        }
+        _;
+    }
+
+    modifier planMustExist(uint planIdx) {
+        if (!_planExists(planIdx)) {
+            revert PlanNotExists();
         }
         _;
     }
@@ -85,7 +80,6 @@ contract SubscriptionService is ISubscriptionService, Ownable {
         uint planIdx = _subscriptions[account].planIdx;
         Plan storage plan = _plans[planIdx];
 
-        // если план отключен, то подписка не действительна, если начался следующий период после момента отключения
         if (_planDisabled(planIdx) || _cancelled(account)) {
             uint period = plan.period;
             uint startedAt = subscription.startedAt;
@@ -134,7 +128,39 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     }
 
     /// @inheritdoc ISubscriptionService
-    function subscribe(uint planIdx) external {
+    function previewCharge(address account, bool makeDiscount) public view returns(
+        uint amountToCharge, 
+        uint periodsToCharge,
+        uint rate
+    ) {
+        if (!_subscribed(account)) return (0, 0, 0);
+
+        Subscription storage subscription = _subscriptions[account];
+        Plan storage plan = _plans[subscription.planIdx];
+
+        periodsToCharge = _calcDebtPeriods(
+            subscription.startedAt, 
+            block.timestamp,
+            subscription.cancelledAt, 
+            subscription.chargedPeriods, 
+            plan.disabledAt, 
+            plan.period, 
+            plan.rate, 
+            balanceOf(account)
+        );
+        
+        if (periodsToCharge > 0) {
+            (amountToCharge, rate) = _calcCharge(
+                periodsToCharge, 
+                // {plan.chargeDiscount}'s range is restricted by addPlan()
+                (makeDiscount) ? plan.chargeDiscount : 0,
+                plan.rate
+            );
+        }
+    }
+
+    /// @inheritdoc ISubscriptionService
+    function subscribe(uint planIdx) external planMustExist(planIdx) {
         if (_planClosed(planIdx) || _planDisabled(planIdx)) revert PlanUnavailable();
 
         if (_subscribed(msg.sender)) {
@@ -192,44 +218,6 @@ contract SubscriptionService is ISubscriptionService, Ownable {
                 amountToCharge, 
                 periodsToCharge, 
                 amountToCharge > 0
-            );
-        }
-    }
-
-    /**
-     * @param account Address of the account
-     * @param makeDiscount Whether to apply discount
-     * @return amountToCharge Total ETH amount to charge for all considered periods (taking into account the discount)
-     * @return periodsToCharge Total number of periods to charge
-     * @return rate Rate to charge for the period
-     */
-    function previewCharge(address account, bool makeDiscount) public view returns(
-        uint amountToCharge, 
-        uint periodsToCharge,
-        uint rate
-    ) {
-        if (!_subscribed(account)) return (0, 0, 0);
-
-        Subscription storage subscription = _subscriptions[account];
-        Plan storage plan = _plans[subscription.planIdx];
-
-        periodsToCharge = _calcDebtPeriods(
-            subscription.startedAt, 
-            block.timestamp,
-            subscription.cancelledAt, 
-            subscription.chargedPeriods, 
-            plan.disabledAt, 
-            plan.period, 
-            plan.rate, 
-            balanceOf(account)
-        );
-        
-        if (periodsToCharge > 0) {
-            (amountToCharge, rate) = _calcCharge(
-                periodsToCharge, 
-                // {plan.chargeDiscount}'s range is restricted by addPlan()
-                (makeDiscount) ? plan.chargeDiscount : 0,
-                plan.rate
             );
         }
     }
@@ -302,7 +290,7 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     }
 
     /// @inheritdoc ISubscriptionService
-    function getPlan(uint planIdx) external view returns(Plan memory) {
+    function getPlan(uint planIdx) external view planMustExist(planIdx) returns(Plan memory) {
         return _plans[planIdx];
     }
 
@@ -329,35 +317,38 @@ contract SubscriptionService is ISubscriptionService, Ownable {
         emit PlanAdded(_plans.length - 1);
     }
 
-    /**
-     * @dev See {ISubscriptionService-disablePlan}
-     */
-    function disablePlan(uint planIdx) external onlyOwner {
+    /// @inheritdoc ISubscriptionService
+    function disablePlan(uint planIdx) external onlyOwner planMustExist(planIdx) {
         require(!_planDisabled(planIdx), "plan already disabled");
         _plans[planIdx].disabledAt = block.timestamp;
         emit PlanDisabled(planIdx);
     }
 
-    /**
-     * @dev See {ISubscriptionService-closePlan}
-     */
-    function closePlan(uint planIdx) external onlyOwner {
+    /// @inheritdoc ISubscriptionService
+    function closePlan(uint planIdx) external onlyOwner planMustExist(planIdx) {
         require(!_planDisabled(planIdx), "plan disabled");
         require(!_planClosed(planIdx), "plan already closed");
         _plans[planIdx].closed = true;
         emit PlanClosed(planIdx);
     }
 
-    /**
-     * @dev See {ISubscriptionService-openPlan}
-     */
-    function openPlan(uint planIdx) external onlyOwner {
+    /// @inheritdoc ISubscriptionService
+    function openPlan(uint planIdx) external onlyOwner planMustExist(planIdx) {
         require(!_planDisabled(planIdx), "plan disabled");
         require(_planClosed(planIdx), "plan not closed");
         _plans[planIdx].closed = false;
         emit PlanOpened(planIdx);
     }
 
+    /**
+     * @notice Withdraws an allowed part of the contract's balance to the {receiver}
+     * @dev Makes a transfer to the {receiver} of all amount specified at 'paidAmount' state variable.
+     * that contains the amount of ETH that was paid by users while charging.
+     * Throws if the {receiver} is the zero address
+     * Throws if there's nothing to withdraw
+     * Throws if the transfer failed     
+     * @param receiver The address of the receiver
+     */
     function withdrawPayments(address receiver) external onlyOwner {
         uint currentPaidAmount = paidAmount;
         require(currentPaidAmount > 0, "nothing to withdraw");
@@ -367,6 +358,7 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     }
 
     /**
+     * @dev Check if the account has a subscription based on 'createdAt' timestamp
      * @param account Account's address to check
      * @return bool Is the account's subscribed
      */
@@ -375,21 +367,52 @@ contract SubscriptionService is ISubscriptionService, Ownable {
     }
 
     /**
+     * @dev Checks if the account's subscription is cancelled based on 'cancelledAt' timestamp
      * @param account Account's address to check
+     *        MUST be subscribed
      * @return bool Is the account's subscription cancelled
      */
     function _cancelled(address account) internal view returns(bool) {
         return _subscriptions[account].cancelledAt != 0;
     }
 
+    /**
+     * @dev Checks if the plan is closed based on 'closed' value
+     * @param planIdx The index of the plan
+     *        MUST be in range [0; _plans.length)
+     * @return bool Is the plan closed
+     */
     function _planClosed(uint planIdx) internal view returns(bool) {
         return _plans[planIdx].closed;
     }
 
+    /**
+     * @dev Checks if the {planIdx} exists based on 'length' of the _plans array
+     * @param planIdx The index of the plan
+     * @return bool Is the plan exists
+     */
+    function _planExists(uint planIdx) internal view returns(bool) {
+        return planIdx < _plans.length;
+    }
+
+    /**
+     * @dev Checks if the plan is disabled based on 'disabledAt' timestamp
+     * @param planIdx The index of the plan
+     *        MUST be in range [0; _plans.length)
+     * @return bool Is the plan disabled
+     */
     function _planDisabled(uint planIdx) internal view returns(bool) {
         return _plans[planIdx].disabledAt != 0;
     }
 
+    /**
+     * @dev erases old subscription data and stores new one
+     * Emits {Subscribed} event
+     * @param account The address of the account
+     * @param timestamp The timestamp when subscription was created
+     * @param planIdx The index of the plan
+     * @param trial The trial period in seconds
+     */
     function _subscribe(address account, uint timestamp, uint planIdx, uint trial) internal {
         _subscriptions[account] = Subscription({
             createdAt: timestamp,
@@ -402,6 +425,14 @@ contract SubscriptionService is ISubscriptionService, Ownable {
         emit Subscribed(msg.sender, planIdx);
     }
 
+    /**
+     * @dev set new subscription's 'startedAt' timestamp, resets chargedPeriods and cancelledAt
+     * Emits {Restored} event
+     * @param account The address of the account
+     *        MUST be subscribed
+     * @param timestamp The timestamp to set as new 'startedAt'
+     * @param planIdx The index of the plan
+     */
     function _restore(address account, uint timestamp, uint planIdx) internal {
         Subscription storage subscription = _subscriptions[account];
         subscription.startedAt = timestamp;
@@ -411,6 +442,14 @@ contract SubscriptionService is ISubscriptionService, Ownable {
         emit Restored(account, planIdx);
     }
 
+    /**
+     * @dev set the subscription's 'cancelledAt' timestamp
+     * Emits {Cancelled} event
+     * @param account The address of the account
+     *        MUST be subscribed
+     * @param timestamp The timestamp to set
+     * @param planIdx The index of the plan
+     */
     function _cancel(address account, uint timestamp, uint planIdx) internal {
         _subscriptions[account].cancelledAt = timestamp;
         emit Cancelled(account, planIdx);

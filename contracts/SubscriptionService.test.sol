@@ -13,6 +13,10 @@ contract TestSubscriptionService is SubscriptionService {
         return _cancelled(account);
     }
 
+    function testPlanExists(uint planIdx) external view returns(bool) {
+        return _planExists(planIdx);
+    }
+
     function testPlanClosed(uint planIdx) external view returns(bool) {
         return _planClosed(planIdx);
     }

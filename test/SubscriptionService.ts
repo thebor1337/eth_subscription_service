@@ -89,9 +89,27 @@ describe("StandaloneSubscriptionService", () => {
             });
         });
 
+        describe("getPlan()", () => {
+            it("should revert when plan does not exist", async () => {
+                await expect(
+                    service.getPlan(0)
+                ).to.be.revertedWithCustomError(service, "PlanNotExists");
+            });
+        });
+
         describe("internal functions", () => {
             beforeEach(async () => {
                 await service.addPlan(30 * 24 * 60 * 60, 24 * 60 * 60, 100, 5);
+            });
+
+            describe("_planExists()", async() => {
+                it("should return true when plan exists", async () => {
+                    expect(await service.testPlanExists(0)).to.equal(true);
+                });
+                
+                it("should return false when plan does not exist", async () => {
+                    expect(await service.testPlanExists(1)).to.equal(false);
+                });
             });
 
             describe("_planClosed()", async() => {
@@ -126,6 +144,12 @@ describe("StandaloneSubscriptionService", () => {
                 ).to.be.revertedWith("Ownable: caller is not the owner");
             });
 
+            it("should revert if plan does not exist", async () => {
+                await expect(
+                    service.disablePlan(1)
+                ).to.be.revertedWithCustomError(service, "PlanNotExists");
+            });
+
             it("should revert when plan is already disabled", async () => {
                 await service.disablePlan(0);
                 await expect(
@@ -154,6 +178,12 @@ describe("StandaloneSubscriptionService", () => {
                 await expect(
                     service.connect(user1).closePlan(0)
                 ).to.be.revertedWith("Ownable: caller is not the owner");
+            });
+
+            it("should revert if plan does not exist", async () => {
+                await expect(
+                    service.closePlan(1)
+                ).to.be.revertedWithCustomError(service, "PlanNotExists");
             });
 
             it("should revert when plan is already closed", async () => {
@@ -187,6 +217,12 @@ describe("StandaloneSubscriptionService", () => {
                 ).to.be.revertedWith("Ownable: caller is not the owner");
             });
 
+            it("should revert if plan does not exist", async () => {
+                await expect(
+                    service.openPlan(1)
+                ).to.be.revertedWithCustomError(service, "PlanNotExists");
+            });
+
             it("should revert when plan is already open", async () => {
                 await service.openPlan(0);
                 await expect(
@@ -218,48 +254,77 @@ describe("StandaloneSubscriptionService", () => {
         describe("_calcCountedPeriods()", () => {
             const startedAt = getUtcTimestamp();
             const period = 7 * DAY;
+            const halfPeriod = Math.floor(period / 2);
 
             describe("when subscription is not started", () => {
-                it("should be 0 (+1 if countNext)", async () => {
+                it("should be 0", async () => {
                     expect(await service.testCalcCountedPeriods(startedAt, startedAt - DAY, 0, 0, period)).to.equal(0);
                 });
             });
 
-            describe("while the 1st period", () => {
+            describe("at the 1st period", () => {
                 const periodStartedAt = startedAt;
 
-                it("should be 1 when subscription's not interrupted (subscription not cancelled and plan not disabled)", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period)).to.equal(1);
+                it("should be 1 when the subscription started right now", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, startedAt, 0, 0, period)).to.equal(1);
+                });
+
+                it("should be 1 when subscription's not interrupted (not cancelled and plan not disabled)", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, period)).to.equal(1);
                 });
 
                 it("should be 1 when subscription's interrupted in the current period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period)).to.equal(1);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, 0, startedAt + halfPeriod, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, startedAt + halfPeriod, 0, period)).to.equal(1);
                 });
 
-                it("should be 0 when subscription's interrupted the previous period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt - DAY, period)).to.equal(0);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt - DAY, 0, period)).to.equal(0);
+                it("should be 0 when subscription's interrupted before being started", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, startedAt - halfPeriod, period)).to.equal(0);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, startedAt - halfPeriod, 0, period)).to.equal(0);
                 });
             });
 
-            describe("while the 2nd period", () => {
+            describe("at the 2nd period", () => {
                 const periodStartedAt = startedAt + period;
 
-                it("should be 2 when subscription's not interrupted", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, period)).to.equal(2);
+                it("should be 2 when the period started right now", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt, 0, 0, period)).to.equal(2);
                 });
 
-                // TODO проверить когда maxUntilAt = periodStartedAt (без добавочных)
+                it("should be 2 when subscription's not interrupted", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, period)).to.equal(2);
+                });
 
                 it("should be 2 when subscription's interrupted in the current period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, periodStartedAt + 3 * DAY, period)).to.equal(2);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, periodStartedAt + 3 * DAY, 0, period)).to.equal(2);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, 0, periodStartedAt + halfPeriod, period)).to.equal(2);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, periodStartedAt + halfPeriod, 0, period)).to.equal(2);
                 });
 
                 it("should be 1 when subscription's interrupted in the previous period", async () => {
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, 0, startedAt + 3 * DAY, period)).to.equal(1);
-                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + 5 * DAY, startedAt + 3 * DAY, 0, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, startedAt + halfPeriod, period)).to.equal(1);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, startedAt + halfPeriod, 0, period)).to.equal(1);
+                });
+            });
+
+            describe("at the 10th period", () => {
+                const periodStartedAt = startedAt + 9 * period;
+
+                it("should be 10 when the period started right now", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt, 0, 0, period)).to.equal(10);
+                });
+
+                it("should be 10 when subscription's not interrupted", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, period)).to.equal(10);
+                });
+
+                it("should be 10 when subscription's interrupted in the current period", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, 0, periodStartedAt + halfPeriod, period)).to.equal(10);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod + 10, periodStartedAt + halfPeriod, 0, period)).to.equal(10);
+                });
+
+                it("should be 6 when subscription's interrupted 4 periods ago", async () => {
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, 0, periodStartedAt - period * 3 - halfPeriod, period)).to.equal(6);
+                    expect(await service.testCalcCountedPeriods(startedAt, periodStartedAt + halfPeriod, periodStartedAt - period * 3 - halfPeriod, 0, period)).to.equal(6);
                 });
             });
         });
@@ -268,6 +333,7 @@ describe("StandaloneSubscriptionService", () => {
             const startedAt = getUtcTimestamp();
             const period = 7 * DAY;
             const rate = 100;
+            const halfPeriod = Math.floor(period / 2);
 
             describe("when subscription is not started", () => {
                 it("should be 0", async () => {
@@ -275,45 +341,45 @@ describe("StandaloneSubscriptionService", () => {
                 });
             });
 
-            describe("while the 1st period", () => {
+            describe("at the 1st period", () => {
                 const periodStartedAt = startedAt;
-                it("should be 0 when charged", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 1, 0, period, rate, 0)).to.equal(0);
+                it("should be 0 when already charged", async () => {
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 1, 0, period, rate, 0)).to.equal(0);
                 });
 
                 it("should 1 when not charged and have enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, 0, period, rate, rate)).to.equal(1);
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, 0, period, rate, rate)).to.equal(1);
                 });
 
                 it("should be 0 when not charged and have not enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, 0, period, rate, rate - 1)).to.equal(0);
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, 0, period, rate, rate - 1)).to.equal(0);
                 });
             });
 
-            describe("while the 2nd period", () => {
+            describe("at the 2nd period", () => {
                 const periodStartedAt = startedAt + period;
-                it("should be 0 when charged for two periods", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 2, 0, period, rate, 0)).to.equal(0);
+                it("should be 0 when charged for both periods", async () => {
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 2, 0, period, rate, 0)).to.equal(0);
                 });
 
-                it("should be 1 when not charged for the current period and have enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 1, 0, period, rate, rate)).to.equal(1);
+                it("should be 1 when not charged for one period and have enough balance", async () => {
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 1, 0, period, rate, rate)).to.equal(1);
                 });
 
-                it("should be 0 when not charged for the current period and have not enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 1, 0, period, rate, rate - 1)).to.equal(0);
+                it("should be 0 when not charged for one period and have not enough balance", async () => {
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 1, 0, period, rate, rate - 1)).to.equal(0);
                 });
 
                 it("should be 2 when not charged for both periods and have enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, 0, period, rate, rate * 2)).to.equal(2);
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, 0, period, rate, rate * 2)).to.equal(2);
                 });
 
                 it("should be 1 when not charged for both periods and have balance enough only for 1 period", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, 0, period, rate, rate)).to.equal(1);
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, 0, period, rate, rate)).to.equal(1);
                 });
 
                 it("should be 0 when not charged for both periods and have not enough balance", async () => {
-                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + 5 * DAY, 0, 0, 0, period, rate, rate - 1)).to.equal(0);
+                    expect(await service.testCalcDebtPeriods(startedAt, periodStartedAt + halfPeriod, 0, 0, 0, period, rate, rate - 1)).to.equal(0);
                 });
             });
         });
@@ -332,7 +398,7 @@ describe("StandaloneSubscriptionService", () => {
                     expect(await service.testCalcFundedUntil(startedAt, 0, rate, rate, period)).to.equal(startedAt + period);
                 });
 
-                it("should be {startedAt + 1 period} period when balance is enough for 1 period + extra", async () => {
+                it("should be {startedAt + 1 period} period when balance is enough for 1 period + some extra", async () => {
                     expect(await service.testCalcFundedUntil(startedAt, 0, rate + 1, rate, period)).to.equal(startedAt + period);
                 });
 
@@ -360,19 +426,19 @@ describe("StandaloneSubscriptionService", () => {
             const rate = 101;
 
             describe("without discount", () => {
-                it("should no charge when no periods", async () => {
+                it("should not charge when no periods", async () => {
                     const [amountToCharge, adjustedRate] = await service.testCalcCharge(0, 0, rate);
                     expect(amountToCharge).to.equal(0);
                     expect(adjustedRate).to.equal(rate);
                 });
 
-                it("should charge for 1 period correctly", async () => {
+                it("should charge for 1 period", async () => {
                     const [amountToCharge, adjustedRate] = await service.testCalcCharge(1, 0, rate);
                     expect(amountToCharge).to.equal(rate);
                     expect(adjustedRate).to.equal(rate);
                 });
 
-                it("should charge for 2 periods correctly", async () => {
+                it("should charge for 2 periods", async () => {
                     const [amountToCharge, adjustedRate] = await service.testCalcCharge(2, 0, rate);
                     expect(amountToCharge).to.equal(rate * 2);
                     expect(adjustedRate).to.equal(rate);
@@ -380,18 +446,18 @@ describe("StandaloneSubscriptionService", () => {
             });
 
             describe("with discount", () => {
-                it("should charge for 1 period correctly with 10% discount", async () => {
+                it("should charge for 1 period with 10% discount", async () => {
                     const [amountToCharge, adjustedRate] = await service.testCalcCharge(1, 10, rate);
-                    const desiredRate = Math.floor(rate * 0.9);
-                    expect(amountToCharge).to.equal(desiredRate);
-                    expect(adjustedRate).to.equal(desiredRate);
+                    const expectedRate = Math.floor(rate * 0.9);
+                    expect(amountToCharge).to.equal(expectedRate);
+                    expect(adjustedRate).to.equal(expectedRate);
                 });
 
-                it("should charge for 2 periods correctly with 7% discount", async () => {
+                it("should charge for 2 periods with 7% discount", async () => {
                     const [amountToCharge, adjustedRate] = await service.testCalcCharge(2, 7, rate);
-                    const desiredRate = Math.floor(rate * 0.93);
-                    expect(amountToCharge).to.equal(desiredRate * 2);
-                    expect(adjustedRate).to.equal(desiredRate);
+                    const expectedRate = Math.floor(rate * 0.93);
+                    expect(amountToCharge).to.equal(expectedRate * 2);
+                    expect(adjustedRate).to.equal(expectedRate);
                 });
             });
         });
@@ -662,6 +728,11 @@ describe("StandaloneSubscriptionService", () => {
                 account = user1;
             });
 
+            it("should revert if plan not exists", async () => {
+                await expect(service.connect(account).subscribe(0))
+                .to.be.revertedWithCustomError(service, "PlanNotExists");
+            });
+
             describe("when plan unavailable", () => {
                 beforeEach(async () => {
                     await service.addPlan(DAY, 0, rate, 0);
@@ -711,7 +782,6 @@ describe("StandaloneSubscriptionService", () => {
                         it("should emit Subscribed event", async () => {
                             const timestamp = getUtcTimestamp() + 10;
                             await time.setNextBlockTimestamp(timestamp);
-    
                             await expect(service.connect(account).subscribe(0))
                             .to.emit(service, "Subscribed")
                             .withArgs(account.address, 0);
@@ -720,7 +790,6 @@ describe("StandaloneSubscriptionService", () => {
                         it("should emit Charged event", async () => {
                             const timestamp = getUtcTimestamp() + 10;
                             await time.setNextBlockTimestamp(timestamp);
-    
                             await expect(service.connect(account).subscribe(0))
                             .to.emit(service, "Charged")
                             .withArgs(account.address, account.address, 0, 1, rate);
@@ -874,8 +943,6 @@ describe("StandaloneSubscriptionService", () => {
                             .to.deep.equal([0, 0, 0]);
                         });
                     });
-
-                    // TODO проверить везде где использовал setNextBlockTimestamp
 
                     describe("when have uncharged periods", () => {
                         const subscribeTimestamp = getUtcTimestamp() + 10;
