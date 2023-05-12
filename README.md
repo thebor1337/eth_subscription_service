@@ -24,7 +24,7 @@ Should the contract owner handle this responsibility? Here are a few reasons why
 
 This project introduces a combined method, designed primarily for educational purposes. While it's possible that similar implementations or accepted standards already exist, my focus remains on exploring the subject matter.
 
-###### Algorithm Example**
+###### Algorithm Example
 
 Users can add funds to their contract balance, which will be utilized for regular charges related to their subscriptions. Subsequently, users can initiate a subscription by selecting one of the plans created by the contract owner. Upon subscription registration, users are charged for the first month. At the end of each period, the system automatically verifies the availability of sufficient ETH balance to cover the subsequent period, ensuring uninterrupted subscription services.
 
