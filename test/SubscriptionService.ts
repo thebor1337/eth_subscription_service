@@ -2,7 +2,7 @@ import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { TestStandaloneSubscriptionService } from "../typechain-types";
+import { TestSubscriptionService } from "../typechain-types";
 
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
@@ -17,14 +17,14 @@ const DAY = 24 * 60 * 60;
 describe("StandaloneSubscriptionService", () => {
     async function deploy() {
         const [owner, user1, user2] = await ethers.getSigners();
-        const ServiceFactory = await ethers.getContractFactory("TestStandaloneSubscriptionService");
+        const ServiceFactory = await ethers.getContractFactory("TestSubscriptionService");
         const service = await ServiceFactory.deploy();
 
         return { service, owner, user1, user2 };
     }
 
     describe("Plan", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         let owner: SignerWithAddress;
         let user1: SignerWithAddress;
 
@@ -208,7 +208,7 @@ describe("StandaloneSubscriptionService", () => {
     });
 
     describe("Math", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         
         beforeEach(async () => {
             const deployment = await loadFixture(deploy);
@@ -398,7 +398,7 @@ describe("StandaloneSubscriptionService", () => {
     });
 
     describe("Funds managing", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         let owner: SignerWithAddress;
         let user1: SignerWithAddress;
 
@@ -468,7 +468,7 @@ describe("StandaloneSubscriptionService", () => {
     });
 
     describe("Subscription", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         let owner: SignerWithAddress;
         let user1: SignerWithAddress;
         let user2: SignerWithAddress;
@@ -1430,7 +1430,7 @@ describe("StandaloneSubscriptionService", () => {
     });
 
     describe("Deposit", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         let owner: SignerWithAddress;
         let user1: SignerWithAddress;
 
@@ -1574,7 +1574,7 @@ describe("StandaloneSubscriptionService", () => {
     });
 
     describe("Withdraw", () => {
-        let service: TestStandaloneSubscriptionService;
+        let service: TestSubscriptionService;
         let owner: SignerWithAddress;
         let user1: SignerWithAddress;
 

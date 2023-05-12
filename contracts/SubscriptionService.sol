@@ -19,7 +19,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 // TODO поправить интерфейс (изменились функции)
 // TODO plan existing in external functions
 
-contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownable {
+contract SubscriptionService is ISubscriptionService, Ownable {
     using Math for uint;
 
     uint public paidAmount;
@@ -35,17 +35,17 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _;
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function subscriptionOf(address account) external view mustBeSubscribed(account) returns(Subscription memory) {
         return _subscriptions[account];
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function balanceOf(address account) public view returns(uint) {
         return _balances[account];
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function reservedOf(address account) public view returns(uint) {
         if (!_subscribed(account)) return 0;
 
@@ -68,7 +68,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return debtPeriods * rate;
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function availableBalanceOf(address account) public view returns(uint) {
         uint balance = balanceOf(account);
         uint reserved = reservedOf(account);
@@ -78,7 +78,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return balance - reserved;
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function validUntil(address account) public view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
 
@@ -108,12 +108,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function isValid(address account) external view returns(bool) {
         return block.timestamp < validUntil(account);
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function nextAvailableChargeAt(address account) external view mustBeSubscribed(account) returns(uint) {
         Subscription storage subscription = _subscriptions[account];
         Plan storage plan = _plans[subscription.planIdx];
@@ -133,7 +133,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         return startedAt + countedPeriods * period;
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function subscribe(uint planIdx) external {
         if (_planClosed(planIdx) || _planDisabled(planIdx)) revert PlanUnavailable();
 
@@ -162,7 +162,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function restore() external mustBeSubscribed(msg.sender) {
         if (!_cancelled(msg.sender)) revert NotCancelled();
 
@@ -175,7 +175,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _charge(msg.sender, msg.sender, planIdx, _plans[planIdx].rate, 1, true);
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function cancel() external mustBeSubscribed(msg.sender) {
         if (_cancelled(msg.sender)) revert AlreadyCancelled();
 
@@ -234,7 +234,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function charge(address account) external mustBeSubscribed(account) {
         (uint amountToCharge, uint periodsToCharge, ) = previewCharge(account, account == msg.sender);
         if (periodsToCharge == 0) revert NothingToCharge();
@@ -248,7 +248,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         );
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function chargeMany(address[] calldata accounts) external {
         uint amountToTransfer;
         bool charged;
@@ -282,7 +282,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         }
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function deposit() external payable {
         _beforeDeposit(msg.sender, msg.value);
         _increaseBalance(msg.sender, msg.value);
@@ -290,7 +290,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         _afterDeposit(msg.sender, msg.value);
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function withdraw(uint amount) external {
         uint maxAmount = availableBalanceOf(msg.sender);
         if (amount > maxAmount) {
@@ -301,12 +301,12 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
         emit Withdraw(msg.sender, amount);
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function getPlan(uint planIdx) external view returns(Plan memory) {
         return _plans[planIdx];
     }
 
-    /// @inheritdoc IStandaloneSubscriptionService
+    /// @inheritdoc ISubscriptionService
     function addPlan(
         uint period,
         uint trial,
@@ -330,7 +330,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
-     * @dev See {IStandaloneSubscriptionService-disablePlan}
+     * @dev See {ISubscriptionService-disablePlan}
      */
     function disablePlan(uint planIdx) external onlyOwner {
         require(!_planDisabled(planIdx), "plan already disabled");
@@ -339,7 +339,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
-     * @dev See {IStandaloneSubscriptionService-closePlan}
+     * @dev See {ISubscriptionService-closePlan}
      */
     function closePlan(uint planIdx) external onlyOwner {
         require(!_planDisabled(planIdx), "plan disabled");
@@ -349,7 +349,7 @@ contract StandaloneSubscriptionService is IStandaloneSubscriptionService, Ownabl
     }
 
     /**
-     * @dev See {IStandaloneSubscriptionService-openPlan}
+     * @dev See {ISubscriptionService-openPlan}
      */
     function openPlan(uint planIdx) external onlyOwner {
         require(!_planDisabled(planIdx), "plan disabled");

@@ -1,4 +1,4 @@
-# StandaloneSubscriptionService
+# ISubscriptionService
 
 
 
@@ -122,15 +122,15 @@ Charges a batch of accounts for all debt periods
 function closePlan(uint256 planIdx) external nonpayable
 ```
 
+Closes the plan
 
-
-*See {IStandaloneSubscriptionService-closePlan}*
+*Closes the plan at {planIdx} in plans array. Emits {PlanClosed} event  Throws, if the plan has been disabled Throws, if the plan has already been closed*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| planIdx | uint256 | undefined |
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### deposit
 
@@ -149,20 +149,20 @@ Deposit ETH to the contract and add it to the balance of the sender.
 function disablePlan(uint256 planIdx) external nonpayable
 ```
 
+Disables the plan
 
-
-*See {IStandaloneSubscriptionService-disablePlan}*
+*Disables the plan at {planIdx} in plans array.   Emits {PlanDisabled} event Throws, if the plan has already been disabled*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| planIdx | uint256 | undefined |
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### getPlan
 
 ```solidity
-function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubscriptionService.Plan)
+function getPlan(uint256 planIdx) external view returns (struct ISubscriptionService.Plan)
 ```
 
 
@@ -179,7 +179,7 @@ function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubsc
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | IStandaloneSubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
+| _0 | ISubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
 
 ### isValid
 
@@ -231,85 +231,15 @@ function nextAvailableChargeAt(address account) external view returns (uint256)
 function openPlan(uint256 planIdx) external nonpayable
 ```
 
+Opens the plan
 
-
-*See {IStandaloneSubscriptionService-openPlan}*
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| planIdx | uint256 | undefined |
-
-### owner
-
-```solidity
-function owner() external view returns (address)
-```
-
-
-
-*Returns the address of the current owner.*
-
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | address | undefined |
-
-### paidAmount
-
-```solidity
-function paidAmount() external view returns (uint256)
-```
-
-
-
-
-
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| _0 | uint256 | undefined |
-
-### previewCharge
-
-```solidity
-function previewCharge(address account, bool makeDiscount) external view returns (uint256 amountToCharge, uint256 periodsToCharge, uint256 rate)
-```
-
-
-
-
+*Opens the plan at {planIdx} in plans array.  Emits {PlanOpened} event  Throws, if the plan has been disabled Throws, if the plan has not been closed*
 
 #### Parameters
 
 | Name | Type | Description |
 |---|---|---|
-| account | address | Address of the account |
-| makeDiscount | bool | Whether to apply discount |
-
-#### Returns
-
-| Name | Type | Description |
-|---|---|---|
-| amountToCharge | uint256 | Total ETH amount to charge for all considered periods (taking into account the discount) |
-| periodsToCharge | uint256 | Total number of periods to charge |
-| rate | uint256 | Rate to charge for the period |
-
-### renounceOwnership
-
-```solidity
-function renounceOwnership() external nonpayable
-```
-
-
-
-*Leaves the contract without owner. It will not be possible to call `onlyOwner` functions anymore. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby removing any functionality that is only available to the owner.*
-
+| planIdx | uint256 | The array&#39;s index of the required plan |
 
 ### reservedOf
 
@@ -363,7 +293,7 @@ Subscribes to the plan with the specified index in the plans array
 ### subscriptionOf
 
 ```solidity
-function subscriptionOf(address account) external view returns (struct IStandaloneSubscriptionService.Subscription)
+function subscriptionOf(address account) external view returns (struct ISubscriptionService.Subscription)
 ```
 
 
@@ -380,23 +310,7 @@ function subscriptionOf(address account) external view returns (struct IStandalo
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | IStandaloneSubscriptionService.Subscription | subscription {Subcription} object associated with the account |
-
-### transferOwnership
-
-```solidity
-function transferOwnership(address newOwner) external nonpayable
-```
-
-
-
-*Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.*
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| newOwner | address | undefined |
+| _0 | ISubscriptionService.Subscription | subscription {Subcription} object associated with the account |
 
 ### validUntil
 
@@ -435,22 +349,6 @@ Withdraw ETH from the contract and subtract it from the balance of the sender.
 | Name | Type | Description |
 |---|---|---|
 | amount | uint256 | The amount of ETH to withdraw |
-
-### withdrawPayments
-
-```solidity
-function withdrawPayments(address receiver) external nonpayable
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| receiver | address | undefined |
 
 
 
@@ -509,23 +407,6 @@ event Deposit(address indexed account, uint256 amount)
 |---|---|---|
 | account `indexed` | address | The address of the account |
 | amount  | uint256 | The amount of ETH that was deposited |
-
-### OwnershipTransferred
-
-```solidity
-event OwnershipTransferred(address indexed previousOwner, address indexed newOwner)
-```
-
-
-
-
-
-#### Parameters
-
-| Name | Type | Description |
-|---|---|---|
-| previousOwner `indexed` | address | undefined |
-| newOwner `indexed` | address | undefined |
 
 ### PlanAdded
 

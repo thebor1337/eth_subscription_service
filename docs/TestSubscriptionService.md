@@ -1,4 +1,4 @@
-# TestStandaloneSubscriptionService
+# TestSubscriptionService
 
 
 
@@ -124,7 +124,7 @@ function closePlan(uint256 planIdx) external nonpayable
 
 
 
-*See {IStandaloneSubscriptionService-closePlan}*
+*See {ISubscriptionService-closePlan}*
 
 #### Parameters
 
@@ -151,7 +151,7 @@ function disablePlan(uint256 planIdx) external nonpayable
 
 
 
-*See {IStandaloneSubscriptionService-disablePlan}*
+*See {ISubscriptionService-disablePlan}*
 
 #### Parameters
 
@@ -173,7 +173,7 @@ function dummyDeposit() external payable
 ### getPlan
 
 ```solidity
-function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubscriptionService.Plan)
+function getPlan(uint256 planIdx) external view returns (struct ISubscriptionService.Plan)
 ```
 
 
@@ -190,7 +190,7 @@ function getPlan(uint256 planIdx) external view returns (struct IStandaloneSubsc
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | IStandaloneSubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
+| _0 | ISubscriptionService.Plan | plan {Plan} object of associated with the index in the plans array |
 
 ### isValid
 
@@ -244,7 +244,7 @@ function openPlan(uint256 planIdx) external nonpayable
 
 
 
-*See {IStandaloneSubscriptionService-openPlan}*
+*See {ISubscriptionService-openPlan}*
 
 #### Parameters
 
@@ -374,7 +374,7 @@ Subscribes to the plan with the specified index in the plans array
 ### subscriptionOf
 
 ```solidity
-function subscriptionOf(address account) external view returns (struct IStandaloneSubscriptionService.Subscription)
+function subscriptionOf(address account) external view returns (struct ISubscriptionService.Subscription)
 ```
 
 
@@ -391,7 +391,7 @@ function subscriptionOf(address account) external view returns (struct IStandalo
 
 | Name | Type | Description |
 |---|---|---|
-| _0 | IStandaloneSubscriptionService.Subscription | subscription {Subcription} object associated with the account |
+| _0 | ISubscriptionService.Subscription | subscription {Subcription} object associated with the account |
 
 ### testAfterDeposit
 

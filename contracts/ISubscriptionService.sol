@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 // TODO пометить что throws (какие кастомные ошибки)
 
-interface IStandaloneSubscriptionService {
+interface ISubscriptionService {
 
     /**
      * @dev The plan is a set of parameters that define the conditions for creating a subscription,

@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "./SubscriptionService.sol";
 
-contract TestStandaloneSubscriptionService is StandaloneSubscriptionService {
+contract TestSubscriptionService is SubscriptionService {
 
     function testSubscribed(address account) external view returns(bool) {
         return _subscribed(account);
